@@ -6,6 +6,8 @@ use std::io::Read;
 pub mod gzip;
 use gzip::Gzip;
 
+mod bit_iterator;
+
 pub struct Config {
   pub filename: String,
 }

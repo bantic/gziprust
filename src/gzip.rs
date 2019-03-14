@@ -1,3 +1,5 @@
+use crate::bit_iterator::BitIterator;
+
 #[derive(Debug)]
 pub struct Gzip {
   pub headers: Headers,
@@ -9,14 +11,24 @@ impl Gzip {
   pub fn new(bytes: Vec<u8>) -> Gzip {
     let mut bytes = bytes.iter();
     let headers = Headers::new(&mut bytes);
-    let mut bytes = bytes.rev().take(8);
 
-    let size = read_int_be(&mut bytes, 4);
-    let crc32 = read_int_be(&mut bytes, 4);
+    // for byte in bytes {
+    //   println!("next byte: {:x}", byte);
+    // }
+
+    let bit_iter = BitIterator::new(bytes);
+    for b in bit_iter {
+      println!("next bit: {}", b);
+    }
+
+    // let mut bytes = bytes.rev().take(8);
+
+    // let size = read_int_be(&mut bytes, 4);
+    // let crc32 = read_int_be(&mut bytes, 4);
     Gzip {
       headers,
-      crc32,
-      size,
+      crc32: 0,
+      size: 0,
     }
   }
 }

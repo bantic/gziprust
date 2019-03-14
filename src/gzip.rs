@@ -1,8 +1,10 @@
 use crate::bit_iterator::BitIterator;
+use crate::block::{Block, BlockReader};
 
 #[derive(Debug)]
 pub struct Gzip {
   pub headers: Headers,
+  pub blocks: Vec<Block>,
   pub crc32: u32,
   pub size: u32,
 }
@@ -17,16 +19,25 @@ impl Gzip {
     // }
 
     let bit_iter = BitIterator::new(bytes);
-    for b in bit_iter {
-      println!("next bit: {}", b);
+    let mut block_reader = BlockReader::new(bit_iter);
+    let mut blocks = vec![];
+    loop {
+      let block = block_reader.read_block();
+      let is_last = block.is_last;
+      blocks.push(block);
+      if is_last {
+        break;
+      }
     }
 
+    // This will read the size and crc32 (last 8 bytes)
     // let mut bytes = bytes.rev().take(8);
-
     // let size = read_int_be(&mut bytes, 4);
     // let crc32 = read_int_be(&mut bytes, 4);
+
     Gzip {
       headers,
+      blocks,
       crc32: 0,
       size: 0,
     }

@@ -7,6 +7,7 @@ pub mod gzip;
 use gzip::Gzip;
 
 mod bit_iterator;
+mod block;
 
 pub struct Config {
   pub filename: String,
@@ -69,4 +70,9 @@ fn print_gzip_info(gz: Gzip) {
   }
   println!("Uncompressed data size: {} bytes (mod 2^32)", gz.size);
   println!("CRC: {}", gz.crc32);
+
+  println!("Decompressed {} blocks", gz.blocks.len());
+  for (i, block) in gz.blocks.iter().enumerate() {
+    println!("Block {}: {:?}", i, block);
+  }
 }

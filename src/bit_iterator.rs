@@ -14,19 +14,15 @@ impl<'a, I: Iterator<Item = &'a u8>> BitIterator<'a, I> {
       done: false,
     }
   }
-}
 
-fn to_bits(byte: u8) -> [bool; 8] {
-  [
-    byte & (1 << 7) != 0,
-    byte & (1 << 6) != 0,
-    byte & (1 << 5) != 0,
-    byte & (1 << 4) != 0,
-    byte & (1 << 3) != 0,
-    byte & (1 << 2) != 0,
-    byte & (1 << 1) != 0,
-    byte & 1 != 0,
-  ]
+  pub fn read_bits_inv(&mut self, count: u8) -> u16 {
+    let mut value = 0;
+    for i in 0..count {
+      let bit = if self.next().unwrap() { 1 } else { 0 };
+      value |= bit << i;
+    }
+    value
+  }
 }
 
 impl<'a, I: Iterator<Item = &'a u8>> Iterator for BitIterator<'a, I> {
@@ -83,9 +79,46 @@ impl<'a, I: Iterator<Item = &'a u8>> Iterator for BitIterator<'a, I> {
   }
 }
 
+fn to_bits(byte: u8) -> [bool; 8] {
+  [
+    byte & (1 << 7) != 0,
+    byte & (1 << 6) != 0,
+    byte & (1 << 5) != 0,
+    byte & (1 << 4) != 0,
+    byte & (1 << 3) != 0,
+    byte & (1 << 2) != 0,
+    byte & (1 << 1) != 0,
+    byte & 1 != 0,
+  ]
+}
+
 #[cfg(test)]
 mod test {
   use super::*;
+
+  #[test]
+  fn test_read_bits_inv_to_expected_file() {
+    // This is taken verbatim from https://commandlinefanatic.com/cgi-bin/showarticle.cgi?article=art053#figure3_bottom
+    let bytes = vec![0xbd, 0x1b, 0xfd, 0x6f, 0xda];
+    let mut iter = BitIterator::new(bytes.iter());
+    assert_eq!(iter.read_bits_inv(1), 1);
+    assert_eq!(iter.read_bits_inv(2), 2);
+    assert_eq!(iter.read_bits_inv(5), 23);
+    assert_eq!(iter.read_bits_inv(5), 27);
+    assert_eq!(iter.read_bits_inv(4), 8);
+  }
+  #[test]
+  fn test_read_bits_inv() {
+    let bytes = vec![0b0001_1000];
+    let mut iter = BitIterator::new(bytes.iter());
+    assert_eq!(iter.read_bits_inv(4), 8);
+    assert_eq!(iter.read_bits_inv(4), 1);
+
+    let bytes = vec![0b0101_1101];
+    let mut iter = BitIterator::new(bytes.iter());
+    assert_eq!(iter.read_bits_inv(5), 0b11101);
+    assert_eq!(iter.read_bits_inv(3), 0b010);
+  }
 
   #[test]
   fn test_to_bits() {

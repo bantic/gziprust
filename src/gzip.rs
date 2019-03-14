@@ -67,10 +67,6 @@ pub struct Headers {
   pub extra_fields: Vec<ExtraField>,
 }
 
-// TODO -- I cannot figure out how to use
-// this in the match below. `MAGIC_BYTES[0]` does not seem to be syntactically valid
-const MAGIC_BYTES: [u8; 2] = [0x1f, 0x8b];
-
 enum Flags {
   Text = 0b1,
   CRC16 = 0b10,
@@ -81,8 +77,14 @@ enum Flags {
 
 impl Headers {
   fn new<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> Headers {
+    // TODO -- I cannot figure out how to use
+    // this in the match below. `MAGIC_BYTES[0]` does not seem to be syntactically valid
+    // const MAGIC_BYTES: [u8; 2] = [0x1f, 0x8b];
+    const MAGIC_BYTE_1: u8 = 0x1f;
+    const MAGIC_BYTE_2: u8 = 0x8b;
+
     match (bytes.next(), bytes.next()) {
-      (Some(0x1f), Some(0x8b)) => (),
+      (Some(&MAGIC_BYTE_1), Some(&MAGIC_BYTE_2)) => (),
       _ => panic!("Got wrong initial bytes"),
     }
 

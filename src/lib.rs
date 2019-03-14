@@ -4,10 +4,12 @@ use std::fs::File;
 use std::io::Read;
 
 pub mod gzip;
+use crate::huffman::{HuffmanNode, HuffmanRange};
 use gzip::Gzip;
 
 mod bit_iterator;
 mod block;
+mod huffman;
 
 pub struct Config {
   pub filename: String,
@@ -75,4 +77,6 @@ fn print_gzip_info(gz: Gzip) {
   for (i, block) in gz.blocks.iter().enumerate() {
     println!("Block {}: {:?}", i, block);
   }
+
+  HuffmanNode::from_range(&HuffmanRange::fixed());
 }

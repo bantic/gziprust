@@ -39,7 +39,7 @@ impl<'a, I: Iterator<Item = &'a u8>> Iterator for BitIterator<'a, I> {
         Some(byte) => {
           self.cur_idx = 7;
           println!("getting first byte: {:x}", byte);
-          let bitfield = to_bits(*byte);
+          let bitfield = byte_to_bits(*byte);
           self.bitfield = Some(bitfield);
           bitfield
         }
@@ -61,7 +61,7 @@ impl<'a, I: Iterator<Item = &'a u8>> Iterator for BitIterator<'a, I> {
         match self.bytes.next() {
           Some(byte) => {
             println!("got next byte: {:x}", byte);
-            self.bitfield = Some(to_bits(*byte));
+            self.bitfield = Some(byte_to_bits(*byte));
             self.cur_idx = 7;
           }
           None => {
@@ -79,7 +79,7 @@ impl<'a, I: Iterator<Item = &'a u8>> Iterator for BitIterator<'a, I> {
   }
 }
 
-fn to_bits(byte: u8) -> [bool; 8] {
+pub fn byte_to_bits(byte: u8) -> [bool; 8] {
   [
     byte & (1 << 7) != 0,
     byte & (1 << 6) != 0,
@@ -92,9 +92,45 @@ fn to_bits(byte: u8) -> [bool; 8] {
   ]
 }
 
+pub fn to_bits(val: u32, len: usize) -> Vec<bool> {
+  let mut result = vec![];
+  let mut val = val;
+  loop {
+    result.push(val % 2 == 1);
+    val >>= 1;
+    if val == 0 {
+      break;
+    }
+  }
+
+  while result.len() < len {
+    result.push(false);
+  }
+  result.reverse();
+  result
+}
+
 #[cfg(test)]
 mod test {
   use super::*;
+
+  #[test]
+  fn test_to_bits() {
+    let byte = 0;
+    assert_eq!(to_bits(byte, 1), [false]);
+
+    let byte = 1;
+    assert_eq!(to_bits(byte, 1), [true]);
+
+    let byte = 1;
+    assert_eq!(to_bits(byte, 3), [false, false, true]);
+
+    let byte = 0b000_0000;
+    assert_eq!(
+      to_bits(byte, 7),
+      [false, false, false, false, false, false, false]
+    );
+  }
 
   #[test]
   fn test_read_bits_inv_to_expected_file() {
@@ -121,28 +157,28 @@ mod test {
   }
 
   #[test]
-  fn test_to_bits() {
+  fn test_byte_to_bits() {
     let byte = 0;
     assert_eq!(
-      to_bits(byte),
+      byte_to_bits(byte),
       [false, false, false, false, false, false, false, false]
     );
 
     let byte = 1;
     assert_eq!(
-      to_bits(byte),
+      byte_to_bits(byte),
       [false, false, false, false, false, false, false, true]
     );
 
     let byte = 0b1111_1111;
     assert_eq!(
-      to_bits(byte),
+      byte_to_bits(byte),
       [true, true, true, true, true, true, true, true]
     );
 
     let byte = 0b1010_0101;
     assert_eq!(
-      to_bits(byte),
+      byte_to_bits(byte),
       [true, false, true, false, false, true, false, true]
     );
   }

@@ -65,4 +65,6 @@ fn print_gzip_info(gz: Gzip) {
   for extra_field in gz.headers.extra_fields {
     println!("\t {}: {}", extra_field.id, extra_field.data);
   }
+  println!("Uncompressed data size: {} bytes (mod 2^32)", gz.size);
+  println!("CRC: {}", gz.crc32);
 }

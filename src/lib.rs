@@ -74,8 +74,10 @@ fn print_gzip_info(gz: Gzip) {
   println!("CRC: {}", gz.crc32);
 
   println!("Decompressed {} blocks", gz.blocks.len());
-  for (i, block) in gz.blocks.iter().enumerate() {
+  for (i, block) in gz.blocks.into_iter().enumerate() {
     println!("Block {}: {:?}", i, block);
+    let data = String::from_utf8(block.data).expect("Failed to decode string");
+    println!("Block data: \"{}\"", data);
   }
 
   HuffmanNode::from_range(&HuffmanRange::fixed());

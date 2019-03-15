@@ -15,10 +15,14 @@ impl<'a, I: Iterator<Item = &'a u8>> BitIterator<'a, I> {
     }
   }
 
-  pub fn read_bits_inv(&mut self, count: u8) -> u16 {
+  pub fn read_bits_inv(&mut self, count: u8) -> u32 {
     let mut value = 0;
     for i in 0..count {
-      let bit = if self.next().unwrap() { 1 } else { 0 };
+      let bit = match self.next() {
+        Some(true) => 1,
+        Some(false) => 0,
+        None => panic!("Unexpected end of bits"),
+      };
       value |= bit << i;
     }
     value
@@ -92,6 +96,7 @@ pub fn byte_to_bits(byte: u8) -> [bool; 8] {
   ]
 }
 
+// Turn a value into `len` bool bits
 pub fn to_bits(val: u32, len: usize) -> Vec<bool> {
   let mut result = vec![];
   let mut val = val;

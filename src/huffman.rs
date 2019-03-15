@@ -1,3 +1,5 @@
+use crate::bit_iterator::BitIterator;
+
 #[derive(Clone, Debug)]
 pub struct TreeNode {
   len: u32,
@@ -28,6 +30,23 @@ impl HuffmanNode {
           }
         }
       }
+    }
+  }
+
+  pub fn decode_stream<I: Iterator<Item = bool>>(&self, bits: &mut I) -> Option<u32> {
+    match self.code {
+      Some(v) => Some(v),
+      None => match bits.next() {
+        Some(true) => match &self.one {
+          Some(node) => node.decode_stream(bits),
+          None => panic!("Unexpected decode_stream traversal"),
+        },
+        Some(false) => match &self.zero {
+          Some(node) => node.decode_stream(bits),
+          None => panic!("Unexpected decode_stream traversal"),
+        },
+        None => None,
+      },
     }
   }
 
@@ -72,8 +91,6 @@ impl HuffmanNode {
       }
     }
 
-    println!("tree {:?}", tree);
-
     // build the tree
     let mut root = HuffmanNode::default();
     for n in 0..=(ranges[range_len - 1 as usize].end) {
@@ -107,18 +124,12 @@ impl HuffmanNode {
       }
     }
 
-    println!(
-      "building fixed huffman. max_bit_length: {:?}, bitlength_count: {:?}, next codes: {:?}",
-      max_bit_length, bitlength_count, next_code
-    );
-
-    println!("the ranges is: {:?}", &ranges);
-    println!(
-      "decode 0b0000000 {:?}",
-      root.decode(&vec![false, false, false, false, false, false, false])
-    );
-
     root
+  }
+
+  pub fn fixed() -> HuffmanNode {
+    let range = HuffmanRange::fixed();
+    Self::from_range(&range)
   }
 }
 
@@ -129,6 +140,8 @@ pub struct HuffmanRange {
 }
 
 impl HuffmanRange {
+  // These are hard-coded ranges, see
+  // https://www.w3.org/Graphics/PNG/RFC-1951#fixed
   pub fn fixed() -> Vec<HuffmanRange> {
     let mut ranges = vec![];
     ranges.push(HuffmanRange {
@@ -159,7 +172,7 @@ mod tests {
   #[test]
   fn test_fixed() {
     // See https://www.w3.org/Graphics/PNG/RFC-1951#fixed
-    let root = HuffmanNode::from_range(&HuffmanRange::fixed());
+    let root = HuffmanNode::fixed();
     assert_eq!(root.decode(&to_bits(0b0011_0000, 8)), Some(0));
     assert_eq!(root.decode(&to_bits(0b0011_1001, 8)), Some(9));
     assert_eq!(root.decode(&to_bits(0b1011_1111, 8)), Some(143));

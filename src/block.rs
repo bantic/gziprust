@@ -35,7 +35,11 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
   ) -> Vec<u8> {
     let mut data = vec![];
     loop {
-      let val = dbg!(literals_root.decode_stream(&mut self.bits));
+      println!("before literals_root.decode_stream");
+      self.bits.debug();
+      let val = literals_root.decode_stream(&mut self.bits);
+      println!("after literals_root.decode_stream, decoded {:?}", val);
+      self.bits.debug();
       match val {
         Some(x) if x < 256 => data.push(x as u8),
         Some(256) => break,
@@ -51,7 +55,7 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
           let mut copied_data = vec![];
           let v_idx = data.len() - distance as usize;
           for i in 0..length {
-            let val = dbg!(data[v_idx + i as usize]);
+            let val = data[v_idx + i as usize];
             copied_data.push(val);
             data.push(val);
           }
@@ -94,24 +98,50 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
       4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 3072,
       4096, 6144, 8192, 12288, 16384, 24576,
     ];
-    let mut dist = self.bits.read_bits_inv(5);
-    if dist > 3 {
-      let extra_dist = self.bits.read_bits_inv((dist as u8 - 2) / 2);
-      dist = extra_dist + EXTRA_DIST_ADDEND[dist as usize - 4];
+    println!("decode_fixed_distance, before reading code");
+    self.bits.debug();
+    let code = dbg!(self.bits.read_bits(5));
+    println!("decode_fixed_distance, after reading code");
+    self.bits.debug();
+
+    if code <= 3 {
+      code + 1 // minimum distance is 1, so code 0 => distance 1
+    } else {
+      let extra_bits_to_read = (code as u8 - 2) / 2;
+      println!(
+        "decode_fixed_distance, before reading {} extra bits",
+        extra_bits_to_read
+      );
+      self.bits.debug();
+      let extra_dist = self.bits.read_bits(extra_bits_to_read);
+      println!(
+        "decode_fixed_distance, after reading {} extra bits: {}",
+        extra_bits_to_read, extra_dist
+      );
+      self.bits.debug();
+      1 + extra_dist + EXTRA_DIST_ADDEND[code as usize - 4]
     }
-    dist
   }
 }
 
 #[derive(Debug)]
 pub struct Block {
   pub is_last: bool,
-  encoding: HuffmanEncoding,
+  pub encoding: HuffmanEncoding,
   pub data: Vec<u8>,
 }
 
-#[derive(Debug)]
-enum HuffmanEncoding {
+impl Block {
+  pub fn as_string(&self) -> String {
+    match String::from_utf8(self.data.to_vec()) {
+      Ok(s) => s,
+      _ => String::from("<binary data>"),
+    }
+  }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum HuffmanEncoding {
   Fixed,
   Dynamic,
 }

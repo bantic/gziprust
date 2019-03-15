@@ -1,6 +1,8 @@
+use std::fmt;
 pub struct BitIterator<'a, I: Iterator<Item = &'a u8>> {
   bytes: I,
   bitfield: Option<[bool; 8]>,
+  cur_byte: u8,
   cur_idx: usize,
   done: bool,
 }
@@ -10,9 +12,26 @@ impl<'a, I: Iterator<Item = &'a u8>> BitIterator<'a, I> {
     BitIterator {
       bytes,
       bitfield: None,
+      cur_byte: 0,
       cur_idx: 0,
       done: false,
     }
+  }
+
+  pub fn debug(&self) {
+    let mut details = String::new();
+    if let Some(bitfield) = self.bitfield {
+      for (idx, &b) in bitfield.iter().enumerate() {
+        if idx == self.cur_idx + 1 {
+          details.push_str("<|");
+        }
+        details.push_str(if b { "1" } else { "0" });
+      }
+    }
+    if self.cur_idx == 7 {
+      details.push_str("<|");
+    }
+    println!("[{:x}@{}  {}]", self.cur_byte, self.cur_idx, details);
   }
 
   pub fn read_bits_inv(&mut self, count: u8) -> u32 {
@@ -24,6 +43,19 @@ impl<'a, I: Iterator<Item = &'a u8>> BitIterator<'a, I> {
         None => panic!("Unexpected end of bits"),
       };
       value |= bit << i;
+    }
+    value
+  }
+
+  pub fn read_bits(&mut self, count: u8) -> u32 {
+    let mut value = 0;
+    for i in 0..count {
+      let bit = match self.next() {
+        Some(true) => 1,
+        Some(false) => 0,
+        None => panic!("Unexpected end of bits"),
+      };
+      value |= bit << (count - 1 - i);
     }
     value
   }
@@ -41,8 +73,8 @@ impl<'a, I: Iterator<Item = &'a u8>> Iterator for BitIterator<'a, I> {
       // Get first bitfield
       None => match self.bytes.next() {
         Some(byte) => {
+          self.cur_byte = *byte;
           self.cur_idx = 7;
-          println!("getting first byte: {:x}", byte);
           let bitfield = byte_to_bits(*byte);
           self.bitfield = Some(bitfield);
           bitfield
@@ -61,10 +93,9 @@ impl<'a, I: Iterator<Item = &'a u8>> Iterator for BitIterator<'a, I> {
       0 => {
         // get next byte
         // reset cur_idx to 7
-        println!("cur_idx is 0, getting next byte");
         match self.bytes.next() {
           Some(byte) => {
-            println!("got next byte: {:x}", byte);
+            self.cur_byte = *byte;
             self.bitfield = Some(byte_to_bits(*byte));
             self.cur_idx = 7;
           }
@@ -74,7 +105,6 @@ impl<'a, I: Iterator<Item = &'a u8>> Iterator for BitIterator<'a, I> {
         }
       }
       _ => {
-        println!("returning bit at index {}", self.cur_idx);
         // decrement cur_idx
         self.cur_idx -= 1;
       }
@@ -136,6 +166,16 @@ mod test {
       [false, false, false, false, false, false, false]
     );
   }
+  // #[test]
+  // fn test_read_bits_inv_more() {
+  //   let bytes = vec![0x32, 0x01];
+  //   let mut iter = BitIterator::new(bytes.iter());
+  //   assert_eq!(iter.read_bits_inv(3), 2);
+  //   iter.debug();
+  //   assert_eq!(iter.read_bits_inv(5), 6);
+  //   iter.debug();
+  //   assert_eq!(iter.read_bits_inv(2), 2);
+  // }
 
   #[test]
   fn test_read_bits_inv_to_expected_file() {
@@ -148,6 +188,7 @@ mod test {
     assert_eq!(iter.read_bits_inv(5), 27);
     assert_eq!(iter.read_bits_inv(4), 8);
   }
+
   #[test]
   fn test_read_bits_inv() {
     let bytes = vec![0b0001_1000];
@@ -159,6 +200,35 @@ mod test {
     let mut iter = BitIterator::new(bytes.iter());
     assert_eq!(iter.read_bits_inv(5), 0b11101);
     assert_eq!(iter.read_bits_inv(3), 0b010);
+
+    let bytes = vec![0b1];
+    let mut iter = BitIterator::new(bytes.iter());
+    assert_eq!(iter.read_bits_inv(1), 1);
+
+    let bytes = vec![0b0];
+    let mut iter = BitIterator::new(bytes.iter());
+    assert_eq!(iter.read_bits_inv(1), 0);
+  }
+
+  #[test]
+  fn test_read_bits() {
+    let bytes = vec![0b0001_1000];
+    let mut iter = BitIterator::new(bytes.iter());
+    assert_eq!(iter.read_bits(4), 1);
+    assert_eq!(iter.read_bits(4), 8);
+
+    let bytes = vec![0b1101_1101];
+    let mut iter = BitIterator::new(bytes.iter());
+    assert_eq!(iter.read_bits(5), 0b10111);
+    assert_eq!(iter.read_bits(3), 0b011);
+
+    let bytes = vec![0b1];
+    let mut iter = BitIterator::new(bytes.iter());
+    assert_eq!(iter.read_bits_inv(1), 1);
+
+    let bytes = vec![0b0];
+    let mut iter = BitIterator::new(bytes.iter());
+    assert_eq!(iter.read_bits_inv(1), 0);
   }
 
   #[test]

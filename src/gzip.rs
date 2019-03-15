@@ -10,6 +10,14 @@ pub struct Gzip {
 }
 
 impl Gzip {
+  pub fn as_string(&self) -> String {
+    let mut result = String::new();
+    for block in &self.blocks {
+      result.push_str(&block.as_string());
+    }
+    result
+  }
+
   pub fn new(bytes: Vec<u8>) -> Gzip {
     let mut bytes = bytes.iter();
     let headers = Headers::new(&mut bytes);
@@ -94,7 +102,6 @@ impl Headers {
     let flags = bytes.next().unwrap();
     let mtime = read_int(bytes, 4);
 
-    // todo use this
     let extra_flag = bytes.next().unwrap();
     let compression_info = CompressionInfo::parse(*extra_flag);
 
@@ -172,21 +179,6 @@ fn read_int<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I, size: usize) -> u32 {
   }
   values
     .iter()
-    .map(|&v| u32::from(*v))
-    .enumerate()
-    .fold(0, |acc, (idx, val)| acc + (val << (8 * idx)))
-}
-
-// Read big-endian int of `size` bytes
-fn read_int_be<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I, size: usize) -> u32 {
-  let mut values = vec![];
-  while values.len() < size {
-    let byte = bytes.next().unwrap();
-    values.push(byte);
-  }
-  values
-    .iter()
-    .rev()
     .map(|&v| u32::from(*v))
     .enumerate()
     .fold(0, |acc, (idx, val)| acc + (val << (8 * idx)))
@@ -287,12 +279,45 @@ impl Os {
 #[cfg(test)]
 mod test {
   use super::*;
+  use crate::block::HuffmanEncoding;
+
+  #[test]
+  fn test_gzip_fixed_enc_distance_with_no_extra_bits_simple() {
+    // This file has fixed encoding, and a single match with a distance with no extra bits
+    // The match is len 4, dist 4
+    let bytes = include_bytes!("../tests/data/deflatelate.txt.gz");
+    let gzip = Gzip::new(bytes.to_vec());
+    assert_eq!(gzip.as_string(), "Deflatelate");
+  }
+
+  #[test]
+  fn test_gzip_fixed_enc_distance_with_extra_bits_simple() {
+    // This file has fixed encoding, and a single match with a distance with an extra bit
+    // The match is len 4, dist 5
+    let bytes = include_bytes!("../tests/data/deflate-late.txt.gz");
+    let gzip = Gzip::new(bytes.to_vec());
+    assert_eq!(gzip.as_string(), "Deflate late");
+  }
+
+  #[test]
+  fn test_gzip_fixed_enc_distance_with_extra_bits() {
+    // This file has fixed encoding, and a single match with a distance with an extra bit
+    // The match is len 6, dist 7
+    let bytes = include_bytes!("../tests/data/deflate-1flate.txt.gz");
+    let gzip = Gzip::new(bytes.to_vec());
+
+    assert_eq!(gzip.blocks.len(), 1);
+    assert!(gzip.blocks[0].is_last);
+    assert_eq!(gzip.blocks[0].encoding, HuffmanEncoding::Fixed);
+    assert_eq!(gzip.blocks[0].as_string(), "Deflate 1flate ");
+    assert_eq!(gzip.as_string(), "Deflate 1flate ");
+  }
 
   #[test]
   fn test_read_int() {
-    // let bytes = &[0b0, 0b0, 0b0, 0b0];
-    // let mut bytes = bytes.iter().cloned();
-    // assert_eq!(read_int(&mut bytes, 4), 0);
+    let bytes = [0b0, 0b0, 0b0, 0b0];
+    let mut bytes = bytes.iter();
+    assert_eq!(read_int(&mut bytes, 4), 0);
 
     let bytes = [0b1, 0b0, 0b0, 0b0];
     let mut bytes = bytes.iter();

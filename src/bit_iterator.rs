@@ -1,4 +1,3 @@
-use std::fmt;
 pub struct BitIterator<'a, I: Iterator<Item = &'a u8>> {
   bytes: I,
   bitfield: Option<[bool; 8]>,
@@ -126,56 +125,9 @@ pub fn byte_to_bits(byte: u8) -> [bool; 8] {
   ]
 }
 
-// Turn a value into `len` bool bits
-pub fn to_bits(val: u32, len: usize) -> Vec<bool> {
-  let mut result = vec![];
-  let mut val = val;
-  loop {
-    result.push(val % 2 == 1);
-    val >>= 1;
-    if val == 0 {
-      break;
-    }
-  }
-
-  while result.len() < len {
-    result.push(false);
-  }
-  result.reverse();
-  result
-}
-
 #[cfg(test)]
 mod test {
   use super::*;
-
-  #[test]
-  fn test_to_bits() {
-    let byte = 0;
-    assert_eq!(to_bits(byte, 1), [false]);
-
-    let byte = 1;
-    assert_eq!(to_bits(byte, 1), [true]);
-
-    let byte = 1;
-    assert_eq!(to_bits(byte, 3), [false, false, true]);
-
-    let byte = 0b000_0000;
-    assert_eq!(
-      to_bits(byte, 7),
-      [false, false, false, false, false, false, false]
-    );
-  }
-  // #[test]
-  // fn test_read_bits_inv_more() {
-  //   let bytes = vec![0x32, 0x01];
-  //   let mut iter = BitIterator::new(bytes.iter());
-  //   assert_eq!(iter.read_bits_inv(3), 2);
-  //   iter.debug();
-  //   assert_eq!(iter.read_bits_inv(5), 6);
-  //   iter.debug();
-  //   assert_eq!(iter.read_bits_inv(2), 2);
-  // }
 
   #[test]
   fn test_read_bits_inv_to_expected_file() {

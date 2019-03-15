@@ -1,5 +1,3 @@
-use crate::bit_iterator::BitIterator;
-
 #[derive(Clone, Debug)]
 pub struct TreeNode {
   len: u32,
@@ -14,25 +12,6 @@ pub struct HuffmanNode {
 }
 
 impl HuffmanNode {
-  pub fn decode(&self, bits: &[bool]) -> Option<u32> {
-    match bits.len() {
-      0 => self.code,
-      _ => {
-        if bits[0] {
-          match &self.one {
-            Some(node) => node.decode(&bits[1..]),
-            None => None,
-          }
-        } else {
-          match &self.zero {
-            Some(node) => node.decode(&bits[1..]),
-            None => None,
-          }
-        }
-      }
-    }
-  }
-
   pub fn decode_stream<I: Iterator<Item = bool>>(&self, bits: &mut I) -> Option<u32> {
     match self.code {
       Some(v) => Some(v),
@@ -167,7 +146,67 @@ impl HuffmanRange {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::bit_iterator::to_bits;
+
+  impl HuffmanNode {
+    // Add the ability to decode a slice of bools
+    // TODO - change the tests below to all use the public decode_stream
+    fn decode(&self, bits: &[bool]) -> Option<u32> {
+      match bits.len() {
+        0 => self.code,
+        _ => {
+          if bits[0] {
+            match &self.one {
+              Some(node) => node.decode(&bits[1..]),
+              None => None,
+            }
+          } else {
+            match &self.zero {
+              Some(node) => node.decode(&bits[1..]),
+              None => None,
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Turn a value into `len` bool bits,
+  // it is used to pass values to the huffman tree
+  pub fn to_bits(val: u32, len: usize) -> Vec<bool> {
+    let mut result = vec![];
+    let mut val = val;
+    loop {
+      result.push(val % 2 == 1);
+      val >>= 1;
+      if val == 0 {
+        break;
+      }
+    }
+
+    while result.len() < len {
+      result.push(false);
+    }
+    result.reverse();
+    result
+  }
+
+  #[test]
+  fn test_to_bits() {
+    let byte = 0;
+    assert_eq!(to_bits(byte, 1), [false]);
+
+    let byte = 1;
+    assert_eq!(to_bits(byte, 1), [true]);
+
+    let byte = 1;
+    assert_eq!(to_bits(byte, 3), [false, false, true]);
+
+    let byte = 0b000_0000;
+    assert_eq!(
+      to_bits(byte, 7),
+      [false, false, false, false, false, false, false]
+    );
+  }
 
   #[test]
   fn test_fixed() {

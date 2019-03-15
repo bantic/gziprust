@@ -48,7 +48,7 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
           // copy
           let length = self.decode_length(x);
           let distance = match distances_root {
-            Some(node) => unimplemented!("not yet implemented distances_root"),
+            Some(_node) => unimplemented!("not yet implemented distances_root"),
             None => self.decode_fixed_distance(),
           };
           println!("<{},{}>", length, distance);

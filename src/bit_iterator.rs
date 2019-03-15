@@ -18,6 +18,7 @@ impl<'a, I: Iterator<Item = &'a u8>> BitIterator<'a, I> {
   }
 
   pub fn debug(&self) {
+    return;
     let mut details = String::new();
     if let Some(bitfield) = self.bitfield {
       for (idx, &b) in bitfield.iter().enumerate() {

@@ -95,31 +95,31 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
 
   fn decode_fixed_distance(&mut self) -> u32 {
     const EXTRA_DIST_ADDEND: [u32; 26] = [
-      4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 3072,
-      4096, 6144, 8192, 12288, 16384, 24576,
+      5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073,
+      4097, 6145, 8193, 12289, 16385, 24577,
     ];
-    println!("decode_fixed_distance, before reading code");
+    // println!("decode_fixed_distance, before reading code");
     self.bits.debug();
     let code = dbg!(self.bits.read_bits(5));
-    println!("decode_fixed_distance, after reading code");
+    // println!("decode_fixed_distance, after reading code");
     self.bits.debug();
 
     if code <= 3 {
       code + 1 // minimum distance is 1, so code 0 => distance 1
     } else {
       let extra_bits_to_read = (code as u8 - 2) / 2;
-      println!(
-        "decode_fixed_distance, before reading {} extra bits",
-        extra_bits_to_read
-      );
+      // println!(
+      //   "decode_fixed_distance, before reading {} extra bits",
+      //   extra_bits_to_read
+      // );
       self.bits.debug();
-      let extra_dist = self.bits.read_bits(extra_bits_to_read);
+      let extra_dist = self.bits.read_bits_inv(extra_bits_to_read);
       println!(
         "decode_fixed_distance, after reading {} extra bits: {}",
         extra_bits_to_read, extra_dist
       );
       self.bits.debug();
-      1 + extra_dist + EXTRA_DIST_ADDEND[code as usize - 4]
+      extra_dist + EXTRA_DIST_ADDEND[code as usize - 4]
     }
   }
 }

@@ -10,6 +10,9 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
     BlockReader { bits }
   }
 
+  // TODO - it is possible for a block to refer to data in a previous block, so
+  // this needs to keep track of the entire read data so far, i.e. add an extra
+  // param here to hold "data_so_far" or similar
   pub fn read_block(&mut self) -> Block {
     let is_last = self.bits.read_bits_inv(1) == 1;
     let encoding = match self.bits.read_bits_inv(2) {
@@ -17,14 +20,15 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
       2 => HuffmanEncoding::Dynamic,
       _ => panic!("Unexpected block encoding"),
     };
-    let data = match encoding {
+    let (data, decode_items) = match encoding {
       HuffmanEncoding::Fixed => self.decode_block_data(HuffmanNode::fixed(), None),
-      _ => vec![],
+      _ => (vec![], vec![]),
     };
     Block {
       is_last,
       encoding,
       data,
+      decode_items,
     }
   }
 
@@ -32,17 +36,25 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
     &mut self,
     literals_root: HuffmanNode,
     distances_root: Option<HuffmanNode>,
-  ) -> Vec<u8> {
+  ) -> (Vec<u8>, Vec<DecodeItem>) {
     let mut data = vec![];
+    let mut decode_items = vec![];
+    let mut cur_literals = vec![];
     loop {
-      println!("before literals_root.decode_stream");
-      self.bits.debug();
       let val = literals_root.decode_stream(&mut self.bits);
-      println!("after literals_root.decode_stream, decoded {:?}", val);
-      self.bits.debug();
       match val {
-        Some(x) if x < 256 => data.push(x as u8),
-        Some(256) => break,
+        Some(x) if x < 256 => {
+          data.push(x as u8);
+          cur_literals.push(x as u8);
+        }
+        Some(256) => {
+          // Stop
+          if !cur_literals.is_empty() {
+            decode_items.push(DecodeItem::Literal(cur_literals.clone()));
+            cur_literals.clear();
+          }
+          break;
+        }
         Some(x) if x < 285 => {
           // figure out length,distance
           // copy
@@ -51,7 +63,8 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
             Some(_node) => unimplemented!("not yet implemented distances_root"),
             None => self.decode_fixed_distance(),
           };
-          println!("<{},{}>", length, distance);
+
+          // copy data
           let mut copied_data = vec![];
           let v_idx = data.len() - distance as usize;
           for i in 0..length {
@@ -59,18 +72,19 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
             copied_data.push(val);
             data.push(val);
           }
-          println!(
-            "<{},{}> => {}",
-            length,
-            distance,
-            String::from_utf8(copied_data).expect("failed to decode copied data into utf8 string")
-          );
+
+          // Append to decode stream
+          if !cur_literals.is_empty() {
+            decode_items.push(DecodeItem::Literal(cur_literals.clone()));
+            cur_literals.clear();
+          }
+          decode_items.push(DecodeItem::Match(length, distance));
         }
         Some(x) => panic!("Unexpected decoded value {}", x),
         None => panic!("Failed to decode from stream"),
       }
     }
-    data
+    (data, decode_items)
   }
 
   fn decode_length(&mut self, code: u32) -> u32 {
@@ -133,6 +147,7 @@ pub struct Block {
   pub is_last: bool,
   pub encoding: HuffmanEncoding,
   pub data: Vec<u8>,
+  pub decode_items: Vec<DecodeItem>,
 }
 
 impl Block {
@@ -140,6 +155,28 @@ impl Block {
     match String::from_utf8(self.data.to_vec()) {
       Ok(s) => s,
       _ => String::from("<binary data>"),
+    }
+  }
+}
+
+#[derive(Debug)]
+pub enum DecodeItem {
+  Literal(Vec<u8>),
+  Match(u32, u32),
+}
+
+use std::fmt;
+impl fmt::Display for DecodeItem {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      DecodeItem::Literal(bytes) => {
+        let string = match String::from_utf8(bytes.to_vec()) {
+          Ok(v) => v,
+          _ => String::from("<binary data>"),
+        };
+        write!(f, "literal '{}", string)
+      }
+      DecodeItem::Match(length, distance) => write!(f, "match {} {}", length, distance),
     }
   }
 }

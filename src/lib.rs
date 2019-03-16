@@ -4,7 +4,6 @@ use std::fs::File;
 use std::io::Read;
 
 pub mod gzip;
-use crate::huffman::{HuffmanNode, HuffmanRange};
 use gzip::Gzip;
 
 mod bit_iterator;
@@ -75,10 +74,19 @@ fn print_gzip_info(gz: Gzip) {
 
   println!("Decompressed {} blocks", gz.blocks.len());
   for (i, block) in gz.blocks.into_iter().enumerate() {
-    println!("Block {}: {:?}", i, block);
-    let data = String::from_utf8(block.data).expect("Failed to decode string");
-    println!("Block data: \"{}\"", data);
+    println!("==================================");
+    println!(
+      "Block {}: is_last? {}, encoding: {:?}",
+      i, block.is_last, block.encoding
+    );
+    let string = match String::from_utf8(block.data) {
+      Ok(v) => v,
+      _ => String::from("<binary data>"),
+    };
+    for item in block.decode_items {
+      println!("\t{}", item);
+    }
+    println!("\tdata: \"{}\"", string);
+    println!("==================================");
   }
-
-  HuffmanNode::from_range(&HuffmanRange::fixed());
 }

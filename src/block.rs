@@ -100,7 +100,11 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
     ];
     // println!("decode_fixed_distance, before reading code");
     self.bits.debug();
+
+    // TODO -- Why is this `read_bits` and not `read_bits_inv` ??
+    // This is the only place that we read the bits in LSB->MSB order and *don't* invert them
     let code = dbg!(self.bits.read_bits(5));
+
     // println!("decode_fixed_distance, after reading code");
     self.bits.debug();
 

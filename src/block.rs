@@ -112,31 +112,17 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
       5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073,
       4097, 6145, 8193, 12289, 16385, 24577,
     ];
-    // println!("decode_fixed_distance, before reading code");
-    self.bits.debug();
 
-    // TODO -- Why is this `read_bits` and not `read_bits_inv` ??
     // This is the only place that we read the bits in LSB->MSB order and *don't* invert them
-    let code = dbg!(self.bits.read_bits(5));
-
-    // println!("decode_fixed_distance, after reading code");
-    self.bits.debug();
+    // The RFC says: "The extra bits should be interpreted as a machine integer stored with the most-significant bit first, e.g., bits 1110 represent the value 14."
+    // So that appears to explain why the bits would be read in a non-inverted way. Of course...why!?
+    let code = self.bits.read_bits(5);
 
     if code <= 3 {
       code + 1 // minimum distance is 1, so code 0 => distance 1
     } else {
       let extra_bits_to_read = (code as u8 - 2) / 2;
-      // println!(
-      //   "decode_fixed_distance, before reading {} extra bits",
-      //   extra_bits_to_read
-      // );
-      self.bits.debug();
       let extra_dist = self.bits.read_bits_inv(extra_bits_to_read);
-      println!(
-        "decode_fixed_distance, after reading {} extra bits: {}",
-        extra_bits_to_read, extra_dist
-      );
-      self.bits.debug();
       extra_dist + EXTRA_DIST_ADDEND[code as usize - 4]
     }
   }

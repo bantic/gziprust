@@ -17,6 +17,7 @@ impl<'a, I: Iterator<Item = &'a u8>> BitIterator<'a, I> {
     }
   }
 
+  #[allow(dead_code)]
   pub fn debug(&self) {
     return;
     // let mut details = String::new();

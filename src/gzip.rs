@@ -22,10 +22,6 @@ impl Gzip {
     let mut bytes = bytes.iter();
     let headers = Headers::new(&mut bytes);
 
-    // for byte in bytes {
-    //   println!("next byte: {:x}", byte);
-    // }
-
     let bit_iter = BitIterator::new(bytes);
     let mut block_reader = BlockReader::new(bit_iter);
     let mut blocks = vec![];

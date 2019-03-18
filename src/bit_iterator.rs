@@ -19,20 +19,19 @@ impl<'a, I: Iterator<Item = &'a u8>> BitIterator<'a, I> {
 
   #[allow(dead_code)]
   pub fn debug(&self) {
-    return;
-    // let mut details = String::new();
-    // if let Some(bitfield) = self.bitfield {
-    //   for (idx, &b) in bitfield.iter().enumerate() {
-    //     if idx == self.cur_idx + 1 {
-    //       details.push_str("<|");
-    //     }
-    //     details.push_str(if b { "1" } else { "0" });
-    //   }
-    // }
-    // if self.cur_idx == 7 {
-    //   details.push_str("<|");
-    // }
-    // println!("[{:x}@{}  {}]", self.cur_byte, self.cur_idx, details);
+    let mut details = String::new();
+    if let Some(bitfield) = self.bitfield {
+      for (idx, &b) in bitfield.iter().enumerate() {
+        if idx == self.cur_idx + 1 {
+          details.push_str("<|");
+        }
+        details.push_str(if b { "1" } else { "0" });
+      }
+    }
+    if self.cur_idx == 7 {
+      details.push_str("<|");
+    }
+    println!("[{:x}@{}  {}]", self.cur_byte, self.cur_idx, details);
   }
 
   pub fn read_bits_inv(&mut self, count: u8) -> u32 {

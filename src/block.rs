@@ -1,5 +1,5 @@
 use crate::bit_iterator::BitIterator;
-use crate::huffman::{HuffmanNode, HuffmanRange};
+use crate::huffman::HuffmanNode;
 
 pub struct BlockReader<'a, I: Iterator<Item = &'a u8>> {
   bits: BitIterator<'a, I>,
@@ -23,9 +23,8 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
     let (data, decode_items) = match encoding {
       HuffmanEncoding::Fixed => self.decode_block_data(HuffmanNode::fixed(), None),
       HuffmanEncoding::Dynamic => {
-        unimplemented!("not yet implemented dynamic")
-        // let (literals_root, distances_root) = self.decode_dynamic_data();
-        // self.decode_block_data(literals_root, Some(distances_root))
+        let (literals_root, distances_root) = self.decode_dynamic_data();
+        self.decode_block_data(literals_root, Some(distances_root))
       }
     };
     Block {
@@ -46,7 +45,7 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
       code_length_code_lengths.push(self.bits.read_bits_inv(3) as u8);
     }
 
-    let code_lengths_tree = HuffmanNode::from_code_lengths(&code_length_code_lengths);
+    let code_lengths_tree = HuffmanNode::from_header_code_lengths(code_length_code_lengths);
 
     let mut alphabet_lens: Vec<u8> = vec![0; hlit + hdist + 258];
     let mut i = 0;
@@ -80,9 +79,8 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
     }
 
     // build the literals ranges
-    let literals_tree = HuffmanNode::from_code_lengths(&alphabet_lens[0..=(hlit + 257)]);
-    let distance_tree =
-      HuffmanNode::from_code_lengths(&alphabet_lens[(hlit + 257)..=(hdist + hlit + 258)]);
+    let literals_tree = HuffmanNode::from_code_lengths(&alphabet_lens[0..(hlit + 257)]);
+    let distance_tree = HuffmanNode::from_code_lengths(&alphabet_lens[(hlit + 257)..]);
     (literals_tree, distance_tree)
   }
 
@@ -113,10 +111,7 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
           // figure out length,distance
           // copy
           let length = self.decode_length(x);
-          let distance = match distances_root {
-            Some(_node) => unimplemented!("not yet implemented distances_root"),
-            None => self.decode_fixed_distance(),
-          };
+          let distance = self.decode_distance(&distances_root);
 
           // copy data
           let mut copied_data = vec![];
@@ -161,26 +156,22 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
     }
   }
 
-  fn decode_distance(&mut self, code: u8) -> u32 {
+  fn decode_distance(&mut self, distances_root: &Option<HuffmanNode>) -> u32 {
     const EXTRA_DIST_ADDEND: [u32; 26] = [
       5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073,
       4097, 6145, 8193, 12289, 16385, 24577,
     ];
+    let code = match distances_root {
+      Some(node) => node.decode_stream(&mut self.bits).unwrap(),
+      None => self.bits.read_bits(5),
+    };
     if code <= 3 {
-      u32::from(code + 1) // minimum distance is 1, so code 0 => distance 1
+      code + 1 // minimum distance is 1, so code 0 => distance 1
     } else {
       let extra_bits_to_read = (code as u8 - 2) / 2;
       let extra_dist = self.bits.read_bits_inv(extra_bits_to_read);
       extra_dist + EXTRA_DIST_ADDEND[code as usize - 4]
     }
-  }
-
-  fn decode_fixed_distance(&mut self) -> u32 {
-    // This is the only place that we read the bits in LSB->MSB order and *don't* invert them
-    // The RFC says: "The extra bits should be interpreted as a machine integer stored with the most-significant bit first, e.g., bits 1110 represent the value 14."
-    // So that appears to explain why the bits would be read in a non-inverted way. Of course...why!?
-    let code = self.bits.read_bits(5) as u8;
-    self.decode_distance(code)
   }
 }
 

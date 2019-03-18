@@ -11,6 +11,23 @@ pub struct HuffmanNode {
   zero: Option<Box<HuffmanNode>>,
 }
 
+fn fixed_code_lengths() -> Vec<u8> {
+  let mut code_lengths = Vec::with_capacity(287);
+  for _i in 0..=143 {
+    code_lengths.push(8);
+  }
+  for _i in 144..=255 {
+    code_lengths.push(9);
+  }
+  for _i in 256..=279 {
+    code_lengths.push(7);
+  }
+  for _i in 280..=287 {
+    code_lengths.push(8);
+  }
+  code_lengths
+}
+
 impl HuffmanNode {
   pub fn decode_stream<I: Iterator<Item = bool>>(&self, bits: &mut I) -> Option<u32> {
     match self.code {
@@ -120,8 +137,8 @@ impl HuffmanNode {
   }
 
   pub fn fixed() -> HuffmanNode {
-    let range = HuffmanRange::fixed();
-    Self::from_range(&range)
+    // let range = HuffmanRange::fixed();
+    Self::from_code_lengths(&fixed_code_lengths())
   }
 }
 
@@ -134,31 +151,11 @@ pub struct HuffmanRange {
 impl HuffmanRange {
   // These are hard-coded ranges, see
   // https://www.w3.org/Graphics/PNG/RFC-1951#fixed
-  pub fn fixed() -> Vec<HuffmanRange> {
-    let mut ranges = vec![];
-    ranges.push(HuffmanRange {
-      end: 143,
-      bit_length: 8,
-    });
-    ranges.push(HuffmanRange {
-      end: 255,
-      bit_length: 9,
-    });
-    ranges.push(HuffmanRange {
-      end: 279,
-      bit_length: 7,
-    });
-    ranges.push(HuffmanRange {
-      end: 287,
-      bit_length: 8,
-    });
-    ranges
-  }
 
   pub fn from_code_lengths(lengths: &[u8]) -> Vec<HuffmanRange> {
     let mut ranges = vec![];
     let mut j = 0;
-    for i in 0..19 {
+    for i in 0..lengths.len() {
       if i > 0 && lengths[i] != lengths[i - 1] {
         j += 1;
       }

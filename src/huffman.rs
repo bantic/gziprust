@@ -29,12 +29,25 @@ impl HuffmanNode {
     }
   }
 
+  pub fn from_code_lengths(code_lengths: &[u8]) -> HuffmanNode {
+    let ranges = HuffmanRange::from_code_lengths(code_lengths);
+    HuffmanNode::from_range(&ranges)
+  }
+
+  pub fn from_header_code_lengths(code_lengths: Vec<u8>) -> HuffmanNode {
+    let ranges = HuffmanRange::from_header_code_keys(&code_lengths);
+    HuffmanNode::from_range(&ranges)
+  }
+
   pub fn from_range(ranges: &[HuffmanRange]) -> HuffmanNode {
     let range_len = ranges.len();
     let max_bit_length = ranges.iter().map(|range| range.bit_length).max().unwrap();
 
     let mut bitlength_count = vec![0; max_bit_length as usize + 1];
     for i in 0..range_len {
+      if ranges[i].end == 0 && ranges[i].bit_length == 0 {
+        break;
+      }
       let mut to_add = ranges[i].end;
       if i > 0 {
         to_add -= ranges[i - 1].end;
@@ -112,10 +125,10 @@ impl HuffmanNode {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HuffmanRange {
-  end: u32,
-  bit_length: u8,
+  pub end: u32,
+  pub bit_length: u8,
 }
 
 impl HuffmanRange {
@@ -140,6 +153,38 @@ impl HuffmanRange {
       bit_length: 8,
     });
     ranges
+  }
+
+  pub fn from_code_lengths(lengths: &[u8]) -> Vec<HuffmanRange> {
+    let mut ranges = vec![];
+    let mut j = 0;
+    for i in 0..19 {
+      if i > 0 && lengths[i] != lengths[i - 1] {
+        j += 1;
+      }
+      while ranges.len() < (j + 1) {
+        ranges.push(HuffmanRange {
+          end: 0,
+          bit_length: 0,
+        });
+      }
+      ranges[j].end = i as u32;
+      ranges[j].bit_length = lengths[i];
+    }
+
+    ranges
+  }
+
+  pub fn from_header_code_keys(keys: &[u8]) -> Vec<HuffmanRange> {
+    const HUFFMAN_LENGTH_OFFSETS: [usize; 19] = [
+      16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
+    ];
+    let mut code_lengths = [0; 19];
+    for i in 0..keys.len() {
+      code_lengths[HUFFMAN_LENGTH_OFFSETS[i]] = keys[i];
+    }
+
+    HuffmanRange::from_code_lengths(&code_lengths)
   }
 }
 
@@ -229,5 +274,27 @@ mod tests {
 
     assert_eq!(root.decode(&to_bits(0b1_1001_0000, 9)), Some(144));
     assert_eq!(root.decode(&to_bits(0b1_1111_1111, 9)), Some(255));
+  }
+
+  #[test]
+  fn test_dynamic() {
+    // Example table taken from https://commandlinefanatic.com/cgi-bin/showarticle.cgi?article=art001
+    let keys = vec![6, 7, 7, 3, 3, 2, 3, 3, 4, 4, 5, 4];
+    let root = HuffmanNode::from_header_code_lengths(keys);
+
+    assert_eq!(root.decode(&to_bits(0b010, 3)), Some(0));
+    assert_eq!(root.decode(&to_bits(0b1100, 4)), Some(4));
+    assert_eq!(root.decode(&to_bits(0b1101, 4)), Some(5));
+    assert_eq!(root.decode(&to_bits(0b011, 3)), Some(6));
+    assert_eq!(root.decode(&to_bits(0b00, 2)), Some(7));
+    assert_eq!(root.decode(&to_bits(0b01, 2)), None);
+    assert_eq!(root.decode(&to_bits(0b100, 3)), Some(8));
+    assert_eq!(root.decode(&to_bits(0b101, 3)), Some(9));
+    assert_eq!(root.decode(&to_bits(0b110, 3)), None);
+    assert_eq!(root.decode(&to_bits(0b1110, 4)), Some(10));
+    assert_eq!(root.decode(&to_bits(0b11110, 5)), Some(11));
+    assert_eq!(root.decode(&to_bits(0b11_1110, 6)), Some(16));
+    assert_eq!(root.decode(&to_bits(0b111_1110, 7)), Some(17));
+    assert_eq!(root.decode(&to_bits(0b111_1111, 7)), Some(18));
   }
 }

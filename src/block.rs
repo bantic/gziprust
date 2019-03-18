@@ -1,5 +1,5 @@
 use crate::bit_iterator::BitIterator;
-use crate::huffman::HuffmanNode;
+use crate::huffman::{HuffmanNode, HuffmanRange};
 
 pub struct BlockReader<'a, I: Iterator<Item = &'a u8>> {
   bits: BitIterator<'a, I>,
@@ -22,7 +22,11 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
     };
     let (data, decode_items) = match encoding {
       HuffmanEncoding::Fixed => self.decode_block_data(HuffmanNode::fixed(), None),
-      _ => (vec![], vec![]),
+      HuffmanEncoding::Dynamic => {
+        unimplemented!("not yet implemented dynamic")
+        // let (literals_root, distances_root) = self.decode_dynamic_data();
+        // self.decode_block_data(literals_root, Some(distances_root))
+      }
     };
     Block {
       is_last,
@@ -30,6 +34,56 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
       data,
       decode_items,
     }
+  }
+
+  fn decode_dynamic_data(&mut self) -> (HuffmanNode, HuffmanNode) {
+    let hlit = self.bits.read_bits_inv(5) as usize; // == # of lit/length codes - 257 (257-286)
+    let hdist = self.bits.read_bits_inv(5) as usize; // == # of distance codes - 1 (1-32)
+    let hclen = self.bits.read_bits_inv(4) as usize; // == # of code length codes - 4 (4-19)
+
+    let mut code_length_code_lengths: Vec<u8> = Vec::with_capacity(3 * (4 + hclen) as usize);
+    for _ in 0..(hclen + 4) {
+      code_length_code_lengths.push(self.bits.read_bits_inv(3) as u8);
+    }
+
+    let code_lengths_tree = HuffmanNode::from_code_lengths(&code_length_code_lengths);
+
+    let mut alphabet_lens: Vec<u8> = vec![0; hlit + hdist + 258];
+    let mut i = 0;
+    while i < (hlit + hdist + 258) {
+      if let Some(code) = code_lengths_tree.decode_stream(&mut self.bits) {
+        if code > 255 {
+          panic!("Unexpected large, non-u8 code {}", code);
+        }
+        let code = code as u8;
+        match code {
+          0..=15 => {
+            alphabet_lens[i] = code;
+            i += 1;
+          }
+          16..=18 => {
+            let mut repeat_len = match code {
+              16 => self.bits.read_bits_inv(2) + 3,
+              17 => self.bits.read_bits_inv(3) + 3,
+              18 => self.bits.read_bits_inv(7) + 11,
+              _ => panic!("Unexpected code for repeat_len {}", code),
+            };
+            while repeat_len > 0 {
+              repeat_len -= 1;
+              alphabet_lens[i] = if code == 16 { alphabet_lens[i - 1] } else { 0 };
+              i += 1;
+            }
+          }
+          _ => panic!("Unexpected code {} encountered", code),
+        }
+      }
+    }
+
+    // build the literals ranges
+    let literals_tree = HuffmanNode::from_code_lengths(&alphabet_lens[0..=(hlit + 257)]);
+    let distance_tree =
+      HuffmanNode::from_code_lengths(&alphabet_lens[(hlit + 257)..=(hdist + hlit + 258)]);
+    (literals_tree, distance_tree)
   }
 
   fn decode_block_data(
@@ -107,24 +161,26 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
     }
   }
 
-  fn decode_fixed_distance(&mut self) -> u32 {
+  fn decode_distance(&mut self, code: u8) -> u32 {
     const EXTRA_DIST_ADDEND: [u32; 26] = [
       5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073,
       4097, 6145, 8193, 12289, 16385, 24577,
     ];
-
-    // This is the only place that we read the bits in LSB->MSB order and *don't* invert them
-    // The RFC says: "The extra bits should be interpreted as a machine integer stored with the most-significant bit first, e.g., bits 1110 represent the value 14."
-    // So that appears to explain why the bits would be read in a non-inverted way. Of course...why!?
-    let code = self.bits.read_bits(5);
-
     if code <= 3 {
-      code + 1 // minimum distance is 1, so code 0 => distance 1
+      u32::from(code + 1) // minimum distance is 1, so code 0 => distance 1
     } else {
       let extra_bits_to_read = (code as u8 - 2) / 2;
       let extra_dist = self.bits.read_bits_inv(extra_bits_to_read);
       extra_dist + EXTRA_DIST_ADDEND[code as usize - 4]
     }
+  }
+
+  fn decode_fixed_distance(&mut self) -> u32 {
+    // This is the only place that we read the bits in LSB->MSB order and *don't* invert them
+    // The RFC says: "The extra bits should be interpreted as a machine integer stored with the most-significant bit first, e.g., bits 1110 represent the value 14."
+    // So that appears to explain why the bits would be read in a non-inverted way. Of course...why!?
+    let code = self.bits.read_bits(5) as u8;
+    self.decode_distance(code)
   }
 }
 

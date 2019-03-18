@@ -281,6 +281,28 @@ mod test {
   use super::*;
   use crate::block::HuffmanEncoding;
 
+  mod dynamic_encoding {
+    use super::*;
+
+    #[test]
+    fn gunzip_c_file() {
+      let bytes = include_bytes!("../tests/gzip/dynamic_encoding/gunzip.c.gz");
+      let gzip = Gzip::new(bytes.to_vec());
+
+      let expected = include_str!("../tests/gzip/dynamic_encoding/gunzip.c");
+      assert_eq!(gzip.blocks[0].as_string(), expected);
+    }
+
+    #[test]
+    fn gunzip_c_file_structure() {
+      let bytes = include_bytes!("../tests/gzip/dynamic_encoding/gunzip.c.gz");
+      let gzip = Gzip::new(bytes.to_vec());
+
+      assert_eq!(gzip.blocks.len(), 1);
+      assert_eq!(gzip.blocks[0].encoding, HuffmanEncoding::Dynamic);
+    }
+  }
+
   mod fixed_encoding {
     use super::*;
 

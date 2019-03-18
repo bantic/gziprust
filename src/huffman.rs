@@ -4,28 +4,11 @@ pub struct TreeNode {
   code: u32,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, PartialOrd, PartialEq)]
 pub struct HuffmanNode {
   code: Option<u32>,
   one: Option<Box<HuffmanNode>>,
   zero: Option<Box<HuffmanNode>>,
-}
-
-fn fixed_code_lengths() -> Vec<u8> {
-  let mut code_lengths = Vec::with_capacity(287);
-  for _i in 0..=143 {
-    code_lengths.push(8);
-  }
-  for _i in 144..=255 {
-    code_lengths.push(9);
-  }
-  for _i in 256..=279 {
-    code_lengths.push(7);
-  }
-  for _i in 280..=287 {
-    code_lengths.push(8);
-  }
-  code_lengths
 }
 
 impl HuffmanNode {
@@ -48,15 +31,15 @@ impl HuffmanNode {
 
   pub fn from_code_lengths(code_lengths: &[u8]) -> HuffmanNode {
     let ranges = HuffmanRange::from_code_lengths(code_lengths);
-    HuffmanNode::from_range(&ranges)
+    HuffmanNode::from_ranges(&ranges)
   }
 
   pub fn from_header_code_lengths(code_lengths: Vec<u8>) -> HuffmanNode {
     let ranges = HuffmanRange::from_header_code_keys(&code_lengths);
-    HuffmanNode::from_range(&ranges)
+    HuffmanNode::from_ranges(&ranges)
   }
 
-  pub fn from_range(ranges: &[HuffmanRange]) -> HuffmanNode {
+  fn from_ranges(ranges: &[HuffmanRange]) -> HuffmanNode {
     let range_len = ranges.len();
     let max_bit_length = ranges.iter().map(|range| range.bit_length).max().unwrap();
 
@@ -137,8 +120,7 @@ impl HuffmanNode {
   }
 
   pub fn fixed() -> HuffmanNode {
-    // let range = HuffmanRange::fixed();
-    Self::from_code_lengths(&fixed_code_lengths())
+    Self::from_ranges(&HuffmanRange::fixed())
   }
 }
 
@@ -151,8 +133,28 @@ pub struct HuffmanRange {
 impl HuffmanRange {
   // These are hard-coded ranges, see
   // https://www.w3.org/Graphics/PNG/RFC-1951#fixed
+  fn fixed() -> Vec<HuffmanRange> {
+    vec![
+      HuffmanRange {
+        end: 143,
+        bit_length: 8,
+      },
+      HuffmanRange {
+        end: 255,
+        bit_length: 9,
+      },
+      HuffmanRange {
+        end: 279,
+        bit_length: 7,
+      },
+      HuffmanRange {
+        end: 287,
+        bit_length: 8,
+      },
+    ]
+  }
 
-  pub fn from_code_lengths(lengths: &[u8]) -> Vec<HuffmanRange> {
+  fn from_code_lengths(lengths: &[u8]) -> Vec<HuffmanRange> {
     let mut ranges = vec![];
     let mut j = 0;
     for i in 0..lengths.len() {
@@ -172,7 +174,10 @@ impl HuffmanRange {
     ranges
   }
 
-  pub fn from_header_code_keys(keys: &[u8]) -> Vec<HuffmanRange> {
+  // The DEFLATE spec defines a special ordering of the code lengths
+  // for the initial, encoded huffman tree that is used to decode
+  // the literals/lengths and distances trees
+  fn from_header_code_keys(keys: &[u8]) -> Vec<HuffmanRange> {
     const HUFFMAN_LENGTH_OFFSETS: [usize; 19] = [
       16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
     ];
@@ -271,6 +276,31 @@ mod tests {
 
     assert_eq!(root.decode(&to_bits(0b1_1001_0000, 9)), Some(144));
     assert_eq!(root.decode(&to_bits(0b1_1111_1111, 9)), Some(255));
+  }
+
+  fn fixed_code_lengths() -> Vec<u8> {
+    let mut code_lengths = Vec::with_capacity(287);
+    for _i in 0..=143 {
+      code_lengths.push(8);
+    }
+    for _i in 144..=255 {
+      code_lengths.push(9);
+    }
+    for _i in 256..=279 {
+      code_lengths.push(7);
+    }
+    for _i in 280..=287 {
+      code_lengths.push(8);
+    }
+    code_lengths
+  }
+
+  #[test]
+  fn test_generation_of_fixed_huffman_ranges() {
+    assert_eq!(
+      HuffmanNode::from_code_lengths(&fixed_code_lengths()),
+      HuffmanNode::fixed()
+    );
   }
 
   #[test]

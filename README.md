@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/bantic/gziprust.svg?branch=master)](https://travis-ci.org/bantic/gziprust)
+
 # Gzip in Rust
 
 A Gzip decoder (inflater) written entirely in Rust, with (almost) no crates.

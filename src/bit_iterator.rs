@@ -7,7 +7,7 @@ pub struct BitIterator<'a, I: Iterator<Item = &'a u8>> {
 }
 
 impl<'a, I: Iterator<Item = &'a u8>> BitIterator<'a, I> {
-  pub fn new(bytes: I) -> BitIterator<'a, I> {
+  pub fn new(bytes: I) -> Self {
     BitIterator {
       bytes,
       bitfield: None,

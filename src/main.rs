@@ -7,6 +7,7 @@ use std::io::Read;
 mod config;
 
 use crate::config::Config;
+use gziprust::block::DecodeItem;
 use gziprust::gzip::Gzip;
 use std::process;
 
@@ -56,14 +57,44 @@ fn print_gzip_info(gz: Gzip, config: Config) {
         "Block {}: is_last? {}, encoding: {:?}",
         i, block.is_last, block.encoding
       );
-      let string = match String::from_utf8(block.data) {
-        Ok(v) => v,
-        _ => String::from("<binary data>"),
-      };
-      for item in block.decode_items {
-        println!("\t{}", item);
+      // let string = match String::from_utf8(block.data) {
+      //   Ok(v) => v,
+      //   _ => String::from("<binary data>"),
+      // };
+      // for item in &block.decode_items {
+      //   println!("\t{}", item);
+      // }
+      // println!("\tdata: \"{}\"", string);
+
+      let mut idx = 0;
+      let mut match_idx = 0;
+      for item in &block.decode_items {
+        match item {
+          DecodeItem::Literal(bytes) => {
+            for byte in bytes {
+              println!(
+                "literal,{},{},{}",
+                byte, block.byte_bit_lengths[*byte as usize], idx
+              );
+              idx += 1;
+            }
+          }
+          DecodeItem::Match(length, distance) => {
+            let match_start_idx = idx;
+            for l in 0..*length {
+              let orig_idx = (match_start_idx + l) - distance;
+              let byte = &block.data[orig_idx as usize];
+              println!(
+                "match,{},{},{},{},{},{}",
+                byte, length, distance, orig_idx, idx, match_idx
+              );
+              idx += 1;
+            }
+            match_idx += 1;
+          }
+        };
       }
-      println!("\tdata: \"{}\"", string);
+
       println!("==================================");
     }
   }

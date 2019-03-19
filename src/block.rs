@@ -1,5 +1,5 @@
 use crate::bit_iterator::BitIterator;
-use crate::huffman::HuffmanNode;
+use crate::huffman::{fixed_byte_bit_lengths, HuffmanNode};
 
 pub struct BlockReader<'a, I: Iterator<Item = &'a u8>> {
   bits: BitIterator<'a, I>,
@@ -20,10 +20,15 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
       2 => HuffmanEncoding::Dynamic,
       _ => panic!("Unexpected block encoding"),
     };
+    let mut byte_bit_lengths;
     let (data, decode_items) = match encoding {
-      HuffmanEncoding::Fixed => self.decode_block_data(HuffmanNode::fixed(), None),
+      HuffmanEncoding::Fixed => {
+        byte_bit_lengths = fixed_byte_bit_lengths();
+        self.decode_block_data(HuffmanNode::fixed(), None)
+      }
       HuffmanEncoding::Dynamic => {
-        let (literals_root, distances_root) = self.decode_dynamic_data();
+        let (literals_root, distances_root, _byte_bit_lengths) = self.decode_dynamic_data();
+        byte_bit_lengths = _byte_bit_lengths;
         self.decode_block_data(literals_root, Some(distances_root))
       }
     };
@@ -32,10 +37,11 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
       encoding,
       data,
       decode_items,
+      byte_bit_lengths,
     }
   }
 
-  fn decode_dynamic_data(&mut self) -> (HuffmanNode, HuffmanNode) {
+  fn decode_dynamic_data(&mut self) -> (HuffmanNode, HuffmanNode, Vec<u8>) {
     let hlit = self.bits.read_bits_inv(5) as usize; // == # of lit/length codes - 257 (257-286)
     let hdist = self.bits.read_bits_inv(5) as usize; // == # of distance codes - 1 (1-32)
     let hclen = self.bits.read_bits_inv(4) as usize; // == # of code length codes - 4 (4-19)
@@ -51,9 +57,7 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
     let mut i = 0;
     while i < (hlit + hdist + 258) {
       if let Some(code) = code_lengths_tree.decode_stream(&mut self.bits) {
-        if code > 255 {
-          panic!("Unexpected large, non-u8 code {}", code);
-        }
+        assert!(code <= 19); // The code length encodings are all in the range 0-18
         let code = code as u8;
         match code {
           0..=15 => {
@@ -78,10 +82,12 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
       }
     }
 
+    let byte_bit_lengths = alphabet_lens[0..255].to_vec();
+
     // build the literals ranges
     let literals_tree = HuffmanNode::from_code_lengths(&alphabet_lens[0..(hlit + 257)]);
     let distance_tree = HuffmanNode::from_code_lengths(&alphabet_lens[(hlit + 257)..]);
-    (literals_tree, distance_tree)
+    (literals_tree, distance_tree, byte_bit_lengths)
   }
 
   fn decode_block_data(
@@ -93,8 +99,7 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
     let mut decode_items = vec![];
     let mut cur_literals = vec![];
     loop {
-      let val = literals_root.decode_stream(&mut self.bits);
-      match val {
+      match literals_root.decode_stream(&mut self.bits) {
         Some(x) if x < 256 => {
           data.push(x as u8);
           cur_literals.push(x as u8);
@@ -137,6 +142,7 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
   }
 
   fn decode_length(&mut self, code: u32) -> u32 {
+    assert!(code > 256);
     const EXTRA_LENGTH_ADDEND: [u32; 20] = [
       11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227,
     ];
@@ -144,7 +150,6 @@ impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
     const MAX_LENGTH: u32 = 258;
 
     match code {
-      0..=256 => panic!("Unexpected code for length {}", code),
       257..=264 => code - 257 + 3,
       265..=284 => {
         let extra_bits = ((code - 261) / 4) as u8;
@@ -181,6 +186,7 @@ pub struct Block {
   pub encoding: HuffmanEncoding,
   pub data: Vec<u8>,
   pub decode_items: Vec<DecodeItem>,
+  pub byte_bit_lengths: Vec<u8>,
 }
 
 impl Block {
@@ -195,7 +201,7 @@ impl Block {
 #[derive(Debug)]
 pub enum DecodeItem {
   Literal(Vec<u8>),
-  Match(u32, u32),
+  Match(u32, u32), // length, distance
 }
 
 use std::fmt;

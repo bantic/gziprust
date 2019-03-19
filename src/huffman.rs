@@ -94,18 +94,12 @@ impl HuffmanNode {
             if node.one.is_none() {
               node.one = Some(Box::new(HuffmanNode::default()));
             }
-            node = match &mut node.one {
-              Some(one) => &mut *one,
-              None => panic!("uh oh"),
-            };
+            node = node.one.as_mut().unwrap();
           } else {
             if node.zero.is_none() {
               node.zero = Some(Box::new(HuffmanNode::default()));
             }
-            node = match &mut node.zero {
-              Some(zero) => &mut *zero,
-              None => panic!("uh oh"),
-            };
+            node = node.zero.as_mut().unwrap();
           }
           bits -= 1;
         }
@@ -122,6 +116,16 @@ impl HuffmanNode {
   pub fn fixed() -> HuffmanNode {
     Self::from_ranges(&HuffmanRange::fixed())
   }
+}
+
+pub fn fixed_byte_bit_lengths() -> Vec<u8> {
+  let mut byte_bit_lengths = vec![8; 144];
+  byte_bit_lengths.extend_from_slice(&[9; 112]);
+  assert_eq!(byte_bit_lengths[143], 8); // 0-143: 8 bits
+  assert_eq!(byte_bit_lengths[144], 9); // 144-255: 9 bits
+  assert_eq!(byte_bit_lengths[255], 9);
+  assert_eq!(byte_bit_lengths.len(), 256);
+  byte_bit_lengths
 }
 
 #[derive(Debug, Clone)]

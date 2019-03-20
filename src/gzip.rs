@@ -266,17 +266,41 @@ mod test {
   use super::*;
   use crate::deflate::HuffmanEncoding;
 
+  #[test]
+  fn test_dirs() {
+    use std::fs;
+    use std::fs::File;
+    use std::io::Read;
+
+    let src_dir = "tests/gzip/src/";
+    let compressed_dir = "tests/gzip/compressed/";
+
+    for entry in fs::read_dir(src_dir).expect("failed to read src dir") {
+      let path = entry
+        .expect("failed entry")
+        .path()
+        .into_os_string()
+        .into_string()
+        .expect("failed to convert path to string");
+      let compressed_path = path.replace(src_dir, compressed_dir);
+
+      let mut src = vec![];
+      let mut file = File::open(path).expect("Failed to open file");
+      file.read_to_end(&mut src).expect("Failed to read file");
+
+      let mut compressed = vec![];
+      let mut file = File::open(compressed_path).expect("Failed to open file");
+      file
+        .read_to_end(&mut compressed)
+        .expect("Failed to read file");
+
+      let gzip = Gzip::new(compressed);
+      assert_eq!(gzip.data, src);
+    }
+  }
+
   mod dynamic_encoding {
     use super::*;
-
-    #[test]
-    fn gunzip_c_file() {
-      let bytes = include_bytes!("../tests/gzip/dynamic_encoding/gunzip.c.gz");
-      let gzip = Gzip::new(bytes.to_vec());
-
-      let expected = include_str!("../tests/gzip/dynamic_encoding/gunzip.c");
-      assert_eq!(gzip.blocks[0].as_string(), expected);
-    }
 
     #[test]
     fn gunzip_c_file_structure() {
@@ -292,53 +316,15 @@ mod test {
     use super::*;
 
     #[test]
-    fn gzip_length_with_3_extra_bits() {
-      let bytes = include_bytes!("../tests/gzip/fixed_encoding/match_42_71.gz");
-      let gzip = Gzip::new(bytes.to_vec());
-
-      let expected = include_str!("../tests/gzip/fixed_encoding/match_42_71.txt");
-      assert_eq!(gzip.as_string(), expected);
-    }
-
-    #[test]
-    fn gzip_distance_with_extra_bits_complex() {
-      let bytes = include_bytes!("../tests/gzip/fixed_encoding/dist_w_extra_bits_complex.gz");
-      let gzip = Gzip::new(bytes.to_vec());
-
-      let expected = include_str!("../tests/gzip/fixed_encoding/dist_w_extra_bits_complex.txt");
-      assert_eq!(gzip.as_string(), expected);
-    }
-
-    #[test]
-    fn gzip_distance_with_no_extra_bits_simple() {
-      // This file has fixed encoding, and a single match with a distance with no extra bits
-      // The match is len 4, dist 4
-      let bytes = include_bytes!("../tests/data/deflatelate.txt.gz");
-      let gzip = Gzip::new(bytes.to_vec());
-      assert_eq!(gzip.as_string(), "Deflatelate");
-    }
-
-    #[test]
-    fn gzip_distance_with_extra_bits_simple() {
-      // This file has fixed encoding, and a single match with a distance with an extra bit
-      // The match is len 4, dist 5
-      let bytes = include_bytes!("../tests/data/deflate-late.txt.gz");
-      let gzip = Gzip::new(bytes.to_vec());
-      assert_eq!(gzip.as_string(), "Deflate late");
-    }
-
-    #[test]
     fn gzip_distance_with_extra_bits() {
       // This file has fixed encoding, and a single match with a distance with an extra bit
       // The match is len 6, dist 7
-      let bytes = include_bytes!("../tests/data/deflate-1flate.txt.gz");
+      let bytes = include_bytes!("../tests/gzip/fixed_encoding/deflate-1flate.txt.gz");
       let gzip = Gzip::new(bytes.to_vec());
 
       assert_eq!(gzip.blocks.len(), 1);
       assert!(gzip.blocks[0].is_last);
       assert_eq!(gzip.blocks[0].encoding, HuffmanEncoding::Fixed);
-      assert_eq!(gzip.blocks[0].as_string(), "Deflate 1flate ");
-      assert_eq!(gzip.as_string(), "Deflate 1flate ");
     }
 
   }

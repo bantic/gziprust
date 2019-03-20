@@ -1,4 +1,2 @@
-mod bit_iterator;
-pub mod block;
+pub mod deflate;
 pub mod gzip;
-mod huffman;

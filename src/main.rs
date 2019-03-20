@@ -7,7 +7,7 @@ use std::io::Read;
 mod config;
 
 use crate::config::Config;
-use gziprust::block::DecodeItem;
+use gziprust::deflate::DecodeItem;
 use gziprust::gzip::Gzip;
 use std::process;
 

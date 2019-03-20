@@ -1,5 +1,32 @@
-use crate::bit_iterator::BitIterator;
-use crate::huffman::{fixed_byte_bit_lengths, HuffmanNode};
+mod bit_iterator;
+mod huffman;
+
+use bit_iterator::BitIterator;
+use huffman::{fixed_byte_bit_lengths, HuffmanNode};
+
+pub struct InflateResult {
+  pub blocks: Vec<Block>,
+  pub data: Vec<u8>,
+}
+
+pub fn inflate(bytes: &mut impl Iterator<Item = u8>) -> InflateResult {
+  let bits = BitIterator::new(bytes);
+  let mut block_reader = BlockReader::new(bits);
+  let mut blocks = vec![];
+  let mut data = vec![];
+
+  loop {
+    let block = block_reader.read_block();
+    let is_last = block.is_last;
+    data.extend_from_slice(&block.data);
+    blocks.push(block);
+    if is_last {
+      break;
+    }
+  }
+
+  InflateResult { blocks, data }
+}
 
 pub struct BlockReader<I: Iterator<Item = u8>> {
   bits: BitIterator<I>,

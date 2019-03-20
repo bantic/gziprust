@@ -1,38 +1,20 @@
-use crate::bit_iterator::BitIterator;
-use crate::block::{Block, BlockReader};
+use crate::deflate::{inflate, Block};
 
 #[derive(Debug)]
 pub struct Gzip {
   pub headers: Headers,
   pub blocks: Vec<Block>,
+  pub data: Vec<u8>,
   pub crc32: u32,
   pub size: u32,
 }
 
 impl Gzip {
-  pub fn as_string(&self) -> String {
-    let mut result = String::new();
-    for block in &self.blocks {
-      result.push_str(&block.as_string());
-    }
-    result
-  }
-
   pub fn new(bytes: Vec<u8>) -> Gzip {
     let mut bytes = bytes.into_iter();
     let headers = Headers::new(&mut bytes);
 
-    let bit_iter = BitIterator::new(bytes);
-    let mut block_reader = BlockReader::new(bit_iter);
-    let mut blocks = vec![];
-    loop {
-      let block = block_reader.read_block();
-      let is_last = block.is_last;
-      blocks.push(block);
-      if is_last {
-        break;
-      }
-    }
+    let inflate_result = inflate(&mut bytes);
 
     // This will read the size and crc32 (last 8 bytes)
     // let mut bytes = bytes.rev().take(8);
@@ -41,9 +23,17 @@ impl Gzip {
 
     Gzip {
       headers,
-      blocks,
+      blocks: inflate_result.blocks,
+      data: inflate_result.data,
       crc32: 0,
       size: 0,
+    }
+  }
+
+  pub fn as_string(&self) -> String {
+    match String::from_utf8(self.data.clone()) {
+      Ok(s) => s,
+      _ => String::from("<binary data>"),
     }
   }
 }
@@ -274,7 +264,7 @@ impl Os {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::block::HuffmanEncoding;
+  use crate::deflate::HuffmanEncoding;
 
   mod dynamic_encoding {
     use super::*;
@@ -307,7 +297,7 @@ mod test {
       let gzip = Gzip::new(bytes.to_vec());
 
       let expected = include_str!("../tests/gzip/fixed_encoding/match_42_71.txt");
-      assert_eq!(gzip.blocks[0].as_string(), expected);
+      assert_eq!(gzip.as_string(), expected);
     }
 
     #[test]
@@ -316,7 +306,7 @@ mod test {
       let gzip = Gzip::new(bytes.to_vec());
 
       let expected = include_str!("../tests/gzip/fixed_encoding/dist_w_extra_bits_complex.txt");
-      assert_eq!(gzip.blocks[0].as_string(), expected);
+      assert_eq!(gzip.as_string(), expected);
     }
 
     #[test]

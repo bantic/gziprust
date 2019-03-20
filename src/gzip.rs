@@ -19,7 +19,7 @@ impl Gzip {
   }
 
   pub fn new(bytes: Vec<u8>) -> Gzip {
-    let mut bytes = bytes.iter();
+    let mut bytes = bytes.into_iter();
     let headers = Headers::new(&mut bytes);
 
     let bit_iter = BitIterator::new(bytes);
@@ -80,7 +80,7 @@ enum Flags {
 }
 
 impl Headers {
-  fn new<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> Headers {
+  fn new(bytes: &mut impl Iterator<Item = u8>) -> Headers {
     // TODO -- I cannot figure out how to use
     // this in the match below. `MAGIC_BYTES[0]` does not seem to be syntactically valid
     // const MAGIC_BYTES: [u8; 2] = [0x1f, 0x8b];
@@ -88,22 +88,22 @@ impl Headers {
     const MAGIC_BYTE_2: u8 = 0x8b;
 
     match (bytes.next(), bytes.next()) {
-      (Some(&MAGIC_BYTE_1), Some(&MAGIC_BYTE_2)) => (),
+      (Some(MAGIC_BYTE_1), Some(MAGIC_BYTE_2)) => (),
       _ => panic!("Got wrong initial bytes"),
     }
 
     let byte = bytes.next().unwrap();
-    let compression = Compression::parse(*byte);
+    let compression = Compression::parse(byte);
 
     let flags = bytes.next().unwrap();
     let mtime = read_int(bytes, 4);
 
     let extra_flag = bytes.next().unwrap();
-    let compression_info = CompressionInfo::parse(*extra_flag);
+    let compression_info = CompressionInfo::parse(extra_flag);
 
-    let os = Os::parse(*bytes.next().unwrap());
+    let os = Os::parse(bytes.next().unwrap());
 
-    let extra_fields = if *flags & Flags::Extra as u8 != 0 {
+    let extra_fields = if flags & Flags::Extra as u8 != 0 {
       // parse extra fields
       let mut len = read_int(bytes, 2);
       let mut result = vec![];
@@ -118,21 +118,21 @@ impl Headers {
       vec![]
     };
 
-    let filename = if *flags & Flags::FileName as u8 != 0 {
+    let filename = if flags & Flags::FileName as u8 != 0 {
       Some(read_ascii_string(bytes))
     } else {
       None
     };
 
-    let comment = if *flags & Flags::Comment as u8 != 0 {
+    let comment = if flags & Flags::Comment as u8 != 0 {
       Some(read_ascii_string(bytes))
     } else {
       None
     };
 
-    let is_text = *flags & Flags::Text as u8 != 0;
+    let is_text = flags & Flags::Text as u8 != 0;
 
-    let crc16 = if *flags & Flags::CRC16 as u8 != 0 {
+    let crc16 = if flags & Flags::CRC16 as u8 != 0 {
       Some(read_int(bytes, 2))
     } else {
       None
@@ -152,22 +152,22 @@ impl Headers {
   }
 }
 
-fn read_extra_data_field<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> (u32, ExtraField) {
+fn read_extra_data_field<I: Iterator<Item = u8>>(bytes: &mut I) -> (u32, ExtraField) {
   let mut id = String::new();
-  id.push(*bytes.next().unwrap() as char);
-  id.push(*bytes.next().unwrap() as char);
+  id.push(bytes.next().unwrap() as char);
+  id.push(bytes.next().unwrap() as char);
 
   let len = read_int(bytes, 2);
   let mut data = String::new();
   for _ in 0..len {
-    data.push(*bytes.next().unwrap() as char);
+    data.push(bytes.next().unwrap() as char);
   }
 
   (len + 4, ExtraField { id, data })
 }
 
 // Read little-endian int of `size` bytes
-fn read_int<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I, size: usize) -> u32 {
+fn read_int<I: Iterator<Item = u8>>(bytes: &mut I, size: usize) -> u32 {
   let mut values = vec![];
   while values.len() < size {
     let byte = bytes.next().unwrap();
@@ -175,19 +175,18 @@ fn read_int<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I, size: usize) -> u32 {
   }
   values
     .iter()
-    .map(|&v| u32::from(*v))
+    .map(|&v| u32::from(v))
     .enumerate()
     .fold(0, |acc, (idx, val)| acc + (val << (8 * idx)))
 }
 
 // Read null-terminated string
-fn read_ascii_string<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> String {
+fn read_ascii_string<I: Iterator<Item = u8>>(bytes: &mut I) -> String {
   let mut result = String::new();
   loop {
     match bytes.next() {
-      Some(b'\0') => break,
-      Some(&v) => result.push(v as char),
-      None => break,
+      Some(b'\0') | None => break,
+      Some(v) => result.push(v as char),
     }
   }
   result
@@ -356,28 +355,22 @@ mod test {
 
   #[test]
   fn test_read_int() {
-    let bytes = [0b0, 0b0, 0b0, 0b0];
-    let mut bytes = bytes.iter();
+    let mut bytes = vec![0b0, 0b0, 0b0, 0b0].into_iter();
     assert_eq!(read_int(&mut bytes, 4), 0);
 
-    let bytes = [0b1, 0b0, 0b0, 0b0];
-    let mut bytes = bytes.iter();
+    let mut bytes = vec![0b1, 0b0, 0b0, 0b0].into_iter();
     assert_eq!(read_int(&mut bytes, 4), 1);
 
-    let bytes = &[0b0, 0b1, 0b0, 0b0];
-    let mut bytes = bytes.iter();
+    let mut bytes = vec![0b0, 0b1, 0b0, 0b0].into_iter();
     assert_eq!(read_int(&mut bytes, 4), 256);
 
-    let bytes = &[0b0, 0b0, 0b1, 0b0];
-    let mut bytes = bytes.iter();
+    let mut bytes = vec![0b0, 0b0, 0b1, 0b0].into_iter();
     assert_eq!(read_int(&mut bytes, 4), 0x0001_0000);
 
-    let bytes = &[0b0, 0b0, 0b0, 0b1];
-    let mut bytes = bytes.iter();
+    let mut bytes = vec![0b0, 0b0, 0b0, 0b1].into_iter();
     assert_eq!(read_int(&mut bytes, 4), 0x0100_0000);
 
-    let bytes = &[0b0000_0000, 0b1111_1111, 0b0000_0000, 0b0000_1000];
-    let mut bytes = bytes.iter();
+    let mut bytes = vec![0b0000_0000, 0b1111_1111, 0b0000_0000, 0b0000_1000].into_iter();
     assert_eq!(read_int(&mut bytes, 4), 0x0800_ff00);
   }
 }

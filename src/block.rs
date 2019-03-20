@@ -1,12 +1,12 @@
 use crate::bit_iterator::BitIterator;
 use crate::huffman::{fixed_byte_bit_lengths, HuffmanNode};
 
-pub struct BlockReader<'a, I: Iterator<Item = &'a u8>> {
-  bits: BitIterator<'a, I>,
+pub struct BlockReader<I: Iterator<Item = u8>> {
+  bits: BitIterator<I>,
 }
 
-impl<'a, I: Iterator<Item = &'a u8>> BlockReader<'a, I> {
-  pub fn new(bits: BitIterator<'a, I>) -> BlockReader<'a, I> {
+impl<I: Iterator<Item = u8>> BlockReader<I> {
+  pub fn new(bits: BitIterator<I>) -> BlockReader<I> {
     BlockReader { bits }
   }
 

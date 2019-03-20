@@ -1,4 +1,4 @@
-pub struct BitIterator<'a, I: Iterator<Item = &'a u8>> {
+pub struct BitIterator<I: Iterator<Item = u8>> {
   bytes: I,
   bitfield: Option<[bool; 8]>,
   cur_byte: u8,
@@ -6,7 +6,7 @@ pub struct BitIterator<'a, I: Iterator<Item = &'a u8>> {
   done: bool,
 }
 
-impl<'a, I: Iterator<Item = &'a u8>> BitIterator<'a, I> {
+impl<I: Iterator<Item = u8>> BitIterator<I> {
   pub fn new(bytes: I) -> Self {
     BitIterator {
       bytes,
@@ -61,7 +61,7 @@ impl<'a, I: Iterator<Item = &'a u8>> BitIterator<'a, I> {
   }
 }
 
-impl<'a, I: Iterator<Item = &'a u8>> Iterator for BitIterator<'a, I> {
+impl<I: Iterator<Item = u8>> Iterator for BitIterator<I> {
   type Item = bool;
   fn next(&mut self) -> Option<Self::Item> {
     if self.done {
@@ -73,9 +73,9 @@ impl<'a, I: Iterator<Item = &'a u8>> Iterator for BitIterator<'a, I> {
       // Get first bitfield
       None => match self.bytes.next() {
         Some(byte) => {
-          self.cur_byte = *byte;
+          self.cur_byte = byte;
           self.cur_idx = 7;
-          let bitfield = byte_to_bits(*byte);
+          let bitfield = byte_to_bits(byte);
           self.bitfield = Some(bitfield);
           bitfield
         }
@@ -95,8 +95,8 @@ impl<'a, I: Iterator<Item = &'a u8>> Iterator for BitIterator<'a, I> {
         // reset cur_idx to 7
         match self.bytes.next() {
           Some(byte) => {
-            self.cur_byte = *byte;
-            self.bitfield = Some(byte_to_bits(*byte));
+            self.cur_byte = byte;
+            self.bitfield = Some(byte_to_bits(byte));
             self.cur_idx = 7;
           }
           None => {
@@ -134,7 +134,7 @@ mod test {
   fn test_read_bits_inv_to_expected_file() {
     // This is taken verbatim from https://commandlinefanatic.com/cgi-bin/showarticle.cgi?article=art053#figure3_bottom
     let bytes = vec![0xbd, 0x1b, 0xfd, 0x6f, 0xda];
-    let mut iter = BitIterator::new(bytes.iter());
+    let mut iter = BitIterator::new(bytes.into_iter());
     assert_eq!(iter.read_bits_inv(1), 1);
     assert_eq!(iter.read_bits_inv(2), 2);
     assert_eq!(iter.read_bits_inv(5), 23);
@@ -144,43 +144,43 @@ mod test {
 
   #[test]
   fn test_read_bits_inv() {
-    let bytes = vec![0b0001_1000];
-    let mut iter = BitIterator::new(bytes.iter());
+    let bytes = vec![0b0001_1000].into_iter();
+    let mut iter = BitIterator::new(bytes);
     assert_eq!(iter.read_bits_inv(4), 8);
     assert_eq!(iter.read_bits_inv(4), 1);
 
-    let bytes = vec![0b0101_1101];
-    let mut iter = BitIterator::new(bytes.iter());
+    let bytes = vec![0b0101_1101].into_iter();
+    let mut iter = BitIterator::new(bytes);
     assert_eq!(iter.read_bits_inv(5), 0b11101);
     assert_eq!(iter.read_bits_inv(3), 0b010);
 
-    let bytes = vec![0b1];
-    let mut iter = BitIterator::new(bytes.iter());
+    let bytes = vec![0b1].into_iter();
+    let mut iter = BitIterator::new(bytes);
     assert_eq!(iter.read_bits_inv(1), 1);
 
-    let bytes = vec![0b0];
-    let mut iter = BitIterator::new(bytes.iter());
+    let bytes = vec![0b0].into_iter();
+    let mut iter = BitIterator::new(bytes);
     assert_eq!(iter.read_bits_inv(1), 0);
   }
 
   #[test]
   fn test_read_bits() {
-    let bytes = vec![0b0001_1000];
-    let mut iter = BitIterator::new(bytes.iter());
+    let bytes = vec![0b0001_1000].into_iter();
+    let mut iter = BitIterator::new(bytes);
     assert_eq!(iter.read_bits(4), 1);
     assert_eq!(iter.read_bits(4), 8);
 
-    let bytes = vec![0b1101_1101];
-    let mut iter = BitIterator::new(bytes.iter());
+    let bytes = vec![0b1101_1101].into_iter();
+    let mut iter = BitIterator::new(bytes);
     assert_eq!(iter.read_bits(5), 0b10111);
     assert_eq!(iter.read_bits(3), 0b011);
 
-    let bytes = vec![0b1];
-    let mut iter = BitIterator::new(bytes.iter());
+    let bytes = vec![0b1].into_iter();
+    let mut iter = BitIterator::new(bytes);
     assert_eq!(iter.read_bits_inv(1), 1);
 
-    let bytes = vec![0b0];
-    let mut iter = BitIterator::new(bytes.iter());
+    let bytes = vec![0b0].into_iter();
+    let mut iter = BitIterator::new(bytes);
     assert_eq!(iter.read_bits_inv(1), 0);
   }
 

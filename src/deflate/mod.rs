@@ -1,5 +1,6 @@
 mod bit_iterator;
 mod huffman;
+pub use huffman::HuffmanEncoding;
 
 use bit_iterator::BitIterator;
 use huffman::{fixed_byte_bit_lengths, HuffmanNode};
@@ -245,10 +246,4 @@ impl fmt::Display for DecodeItem {
       DecodeItem::Match(length, distance) => write!(f, "match {} {}", length, distance),
     }
   }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum HuffmanEncoding {
-  Fixed,
-  Dynamic,
 }

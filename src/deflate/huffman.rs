@@ -11,6 +11,12 @@ pub struct HuffmanNode {
   zero: Option<Box<HuffmanNode>>,
 }
 
+#[derive(Debug, PartialEq)]
+pub enum HuffmanEncoding {
+  Fixed,
+  Dynamic,
+}
+
 impl HuffmanNode {
   pub fn decode_stream<I: Iterator<Item = bool>>(&self, bits: &mut I) -> Option<u32> {
     match self.code {

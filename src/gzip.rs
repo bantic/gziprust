@@ -1,3 +1,4 @@
+use crate::crc32;
 use crate::deflate::{inflate, Block};
 
 #[derive(Debug)]
@@ -38,7 +39,7 @@ impl Gzip {
   }
 
   pub fn crc_is_valid(&self) -> bool {
-    self.crc32 == 0
+    self.crc32 == crc32::crc32(&self.data)
   }
 
   pub fn as_string(&self) -> String {
@@ -278,7 +279,7 @@ mod test {
   use crate::deflate::HuffmanEncoding;
 
   #[test]
-  fn test_dirs() {
+  fn test_src_vs_compressed_in_dirs() {
     use std::fs;
     use std::fs::File;
     use std::io::Read;
@@ -307,6 +308,35 @@ mod test {
 
       let gzip = Gzip::new(compressed);
       assert_eq!(gzip.data, src);
+    }
+  }
+
+  #[test]
+  fn test_crc32_in_dirs() {
+    use std::fs;
+    use std::fs::File;
+    use std::io::Read;
+
+    let src_dir = "tests/gzip/src/";
+    let compressed_dir = "tests/gzip/compressed/";
+
+    for entry in fs::read_dir(src_dir).expect("failed to read src dir") {
+      let path = entry
+        .expect("failed entry")
+        .path()
+        .into_os_string()
+        .into_string()
+        .expect("failed to convert path to string");
+      let compressed_path = path.replace(src_dir, compressed_dir);
+
+      let mut compressed = vec![];
+      let mut file = File::open(compressed_path).expect("Failed to open file");
+      file
+        .read_to_end(&mut compressed)
+        .expect("Failed to read file");
+
+      let gzip = Gzip::new(compressed);
+      assert!(gzip.crc_is_valid());
     }
   }
 

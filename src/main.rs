@@ -20,35 +20,44 @@ fn print_gzip_info(gz: Gzip, config: Config) {
     gz.headers.mtime,
   );
   println!("Os: {:?}", gz.headers.os);
-  match gz.headers.filename {
+  match &gz.headers.filename {
     Some(string) => println!("Original Filename: {}", string),
     None => println!("Original Filename: <unknown>"),
   }
 
-  match gz.headers.comment {
+  match &gz.headers.comment {
     Some(string) => println!("Comment: {}", string),
     None => println!("Comment: <none>"),
   }
 
-  match gz.headers.crc16 {
+  match &gz.headers.crc16 {
     Some(v) => println!("Headers CRC16: {}", v),
     None => println!("Headers CRC16: <none>"),
   }
 
-  match gz.headers.compression_info {
+  match &gz.headers.compression_info {
     Some(info) => println!("Compression info: {:?}", info),
     None => println!("Compression info: <none>"),
   }
 
-  println!("Is Text Flag: {}", gz.headers.is_text);
-  println!("{} Extra Fields", gz.headers.extra_fields.len());
-  for extra_field in gz.headers.extra_fields {
+  println!("Is Text Flag: {}", &gz.headers.is_text);
+  println!("{} Extra Fields", &gz.headers.extra_fields.len());
+  for extra_field in &gz.headers.extra_fields {
     println!("\t {}: {}", extra_field.id, extra_field.data);
   }
-  println!("Uncompressed data size: {} bytes (mod 2^32)", gz.size);
-  println!("CRC: {}", gz.crc32);
 
-  println!("Decompressed {} blocks", gz.blocks.len());
+  println!(
+    "Uncompressed data size: {} bytes (mod 2^32) {}",
+    &gz.size,
+    if gz.size_is_valid() { "✅" } else { "😲" }
+  );
+  println!(
+    "CRC: {:x} {}",
+    &gz.crc32,
+    if gz.crc_is_valid() { "✅" } else { "😲" }
+  );
+
+  println!("Decompressed {} blocks", &gz.blocks.len());
 
   if config.debug {
     for (i, block) in gz.blocks.into_iter().enumerate() {

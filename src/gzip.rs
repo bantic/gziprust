@@ -10,24 +10,35 @@ pub struct Gzip {
 }
 
 impl Gzip {
+  fn read_trailing_data(final_bytes: Vec<u8>) -> (u32, u32) {
+    let mut final_bytes = final_bytes.into_iter();
+    let crc32 = read_int(&mut final_bytes, 4);
+    let size = read_int(&mut final_bytes, 4);
+    (crc32, size)
+  }
+
   pub fn new(bytes: Vec<u8>) -> Gzip {
+    let (crc32, size) = Gzip::read_trailing_data(bytes[(bytes.len() - 8)..].to_vec());
+
     let mut bytes = bytes.into_iter();
     let headers = Headers::new(&mut bytes);
-
     let inflate_result = inflate(&mut bytes);
-
-    // This will read the size and crc32 (last 8 bytes)
-    // let mut bytes = bytes.rev().take(8);
-    // let size = read_int_be(&mut bytes, 4);
-    // let crc32 = read_int_be(&mut bytes, 4);
 
     Gzip {
       headers,
       blocks: inflate_result.blocks,
       data: inflate_result.data,
-      crc32: 0,
-      size: 0,
+      crc32,
+      size,
     }
+  }
+
+  pub fn size_is_valid(&self) -> bool {
+    self.data.len() as u64 % 2_u64.pow(32) == u64::from(self.size)
+  }
+
+  pub fn crc_is_valid(&self) -> bool {
+    self.crc32 == 0
   }
 
   pub fn as_string(&self) -> String {

@@ -40,7 +40,7 @@ pub fn inflate(bytes: &mut impl Iterator<Item = u8>) -> InflateResult {
 }
 
 pub struct BlockReader<I: Iterator<Item = u8>> {
-  bits: BitIterator<I>,
+  pub bits: BitIterator<I>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -87,26 +87,27 @@ impl<I: Iterator<Item = u8>> BlockReader<I> {
   // TODO make the decodeitem output match that from infgen
   fn read_stored_block(&mut self, data: &mut Vec<u8>) -> Vec<DecodeItem> {
     // skip to the next byte
-    self.bits.advance_byte();
-    let le = u32::from(self.bits.advance_byte().unwrap());
-    let be = u32::from(self.bits.advance_byte().unwrap());
+    self.bits.discard_extra_bits();
+    let le = self.bits.read_bits_inv(8);
+    let be = self.bits.read_bits_inv(8);
     // println!("{:x},{:x}", le, be);
     let len: u32 = ((be << 8) | le) as u32;
     // println!("len: {}, {:b}", len, len);
 
-    let le = u32::from(self.bits.advance_byte().unwrap());
-    let be = u32::from(self.bits.advance_byte().unwrap());
+    let le = self.bits.read_bits_inv(8);
+    let be = self.bits.read_bits_inv(8);
     let nlen: u32 = ((be << 8) | le) as u32;
     if len != (!nlen & 0xFFFF) {
       panic!(
-        "Invalid length comparison for stored block {} != {}",
+        "Invalid length comparison for stored block len {}, nlen {}, cmp val {}",
         len,
+        nlen,
         (!nlen & 0xFFFF)
       );
     }
 
     for _ in 0..len {
-      data.push(self.bits.advance_byte().unwrap());
+      data.push(self.bits.read_bits_inv(8) as u8);
     }
     vec![]
   }

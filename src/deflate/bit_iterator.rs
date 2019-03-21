@@ -2,7 +2,7 @@ pub struct BitIterator<I: Iterator<Item = u8>> {
   bytes: I,
   bitfield: Option<[bool; 8]>,
   cur_byte: u8,
-  cur_idx: usize,
+  pub cur_idx: usize,
   done: bool,
 }
 
@@ -64,15 +64,25 @@ impl<I: Iterator<Item = u8>> BitIterator<I> {
     value
   }
 
+  pub fn discard_extra_bits(&mut self) {
+    if self.done {
+      return;
+    }
+    if self.cur_idx == 7 {
+      return;
+    }
+    self.advance_byte();
+  }
+
   // TODO add some tests to ensure this is done correctly
-  pub fn advance_byte(&mut self) -> Option<u8> {
+  fn advance_byte(&mut self) -> Option<u8> {
     if self.done {
       None
     } else {
       let result = self.cur_byte;
-      self.cur_idx = 7;
       match self.bytes.next() {
         Some(byte) => {
+          self.cur_idx = 7;
           self.cur_byte = byte;
           self.bitfield = Some(byte_to_bits(byte));
         }

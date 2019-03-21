@@ -24,11 +24,11 @@ impl HuffmanNode {
       None => match bits.next() {
         Some(true) => match &self.one {
           Some(node) => node.decode_stream(bits),
-          None => panic!("Unexpected decode_stream traversal"),
+          None => panic!("Unexpected decode_stream traversal looking for ONE"),
         },
         Some(false) => match &self.zero {
           Some(node) => node.decode_stream(bits),
-          None => panic!("Unexpected decode_stream traversal"),
+          None => panic!("Unexpected decode_stream traversal looking for ZERO"),
         },
         None => None,
       },

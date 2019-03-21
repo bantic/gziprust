@@ -47,7 +47,7 @@ pub struct BlockReader<I: Iterator<Item = u8>> {
 pub enum BlockEncoding {
   HuffmanFixed,
   HuffmanDynamic,
-  None,
+  Stored,
 }
 
 impl<I: Iterator<Item = u8>> BlockReader<I> {
@@ -58,7 +58,7 @@ impl<I: Iterator<Item = u8>> BlockReader<I> {
   pub fn read_block(&mut self, data: &mut Vec<u8>) -> Block {
     let is_last = self.bits.read_bits_inv(1) == 1;
     let encoding = match self.bits.read_bits_inv(2) {
-      0 => BlockEncoding::None,
+      0 => BlockEncoding::Stored,
       1 => BlockEncoding::HuffmanFixed,
       2 => BlockEncoding::HuffmanDynamic,
       v => unreachable!("Unexpected block encoding encountered: {}", v),
@@ -74,7 +74,7 @@ impl<I: Iterator<Item = u8>> BlockReader<I> {
         byte_bit_lengths = _byte_bit_lengths;
         self.decode_block_data(data, literals_root, Some(distances_root))
       }
-      BlockEncoding::None => self.read_uncompressed_block(data),
+      BlockEncoding::Stored => self.read_stored_block(data),
     };
     Block {
       is_last,
@@ -85,7 +85,7 @@ impl<I: Iterator<Item = u8>> BlockReader<I> {
   }
 
   // TODO make the decodeitem output match that from infgen
-  fn read_uncompressed_block(&mut self, data: &mut Vec<u8>) -> Vec<DecodeItem> {
+  fn read_stored_block(&mut self, data: &mut Vec<u8>) -> Vec<DecodeItem> {
     // skip to the next byte
     self.bits.advance_byte();
     let le = u32::from(self.bits.advance_byte().unwrap());

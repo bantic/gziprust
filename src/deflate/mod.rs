@@ -10,22 +10,33 @@ pub struct InflateResult {
   pub data: Vec<u8>,
 }
 
-pub fn inflate(bytes: &mut impl Iterator<Item = u8>) -> InflateResult {
-  let bits = BitIterator::new(bytes);
-  let mut block_reader = BlockReader::new(bits);
-  let mut blocks = vec![];
-  let mut data = vec![];
-
-  loop {
-    let block = block_reader.read_block(&mut data);
-    let is_last = block.is_last;
-    blocks.push(block);
-    if is_last {
-      break;
+impl InflateResult {
+  fn new() -> InflateResult {
+    InflateResult {
+      blocks: vec![],
+      data: vec![],
     }
   }
 
-  InflateResult { blocks, data }
+  fn inflate(&mut self, bytes: &mut impl Iterator<Item = u8>) {
+    let bits = BitIterator::new(bytes);
+    let mut block_reader = BlockReader::new(bits);
+
+    loop {
+      let block = block_reader.read_block(&mut self.data);
+      let is_last = block.is_last;
+      self.blocks.push(block);
+      if is_last {
+        break;
+      }
+    }
+  }
+}
+
+pub fn inflate(bytes: &mut impl Iterator<Item = u8>) -> InflateResult {
+  let mut result = InflateResult::new();
+  result.inflate(bytes);
+  result
 }
 
 pub struct BlockReader<I: Iterator<Item = u8>> {

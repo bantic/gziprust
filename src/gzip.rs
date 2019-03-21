@@ -276,7 +276,7 @@ impl Os {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::deflate::HuffmanEncoding;
+  use crate::deflate::BlockEncoding;
 
   #[test]
   fn test_src_vs_compressed_in_dirs() {
@@ -349,7 +349,7 @@ mod test {
       let gzip = Gzip::new(bytes.to_vec());
 
       assert_eq!(gzip.blocks.len(), 1);
-      assert_eq!(gzip.blocks[0].encoding, HuffmanEncoding::Dynamic);
+      assert_eq!(gzip.blocks[0].encoding, BlockEncoding::HuffmanDynamic);
     }
   }
 
@@ -365,7 +365,7 @@ mod test {
 
       assert_eq!(gzip.blocks.len(), 1);
       assert!(gzip.blocks[0].is_last);
-      assert_eq!(gzip.blocks[0].encoding, HuffmanEncoding::Fixed);
+      assert_eq!(gzip.blocks[0].encoding, BlockEncoding::HuffmanFixed);
     }
 
   }

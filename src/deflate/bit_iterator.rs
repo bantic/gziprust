@@ -59,6 +59,26 @@ impl<I: Iterator<Item = u8>> BitIterator<I> {
     }
     value
   }
+
+  // TODO add some tests to ensure this is done correctly
+  pub fn advance_byte(&mut self) -> Option<u8> {
+    if self.done {
+      None
+    } else {
+      let result = self.cur_byte;
+      self.cur_idx = 7;
+      match self.bytes.next() {
+        Some(byte) => {
+          self.cur_byte = byte;
+          self.bitfield = Some(byte_to_bits(byte));
+        }
+        None => {
+          self.done = true;
+        }
+      };
+      Some(result)
+    }
+  }
 }
 
 impl<I: Iterator<Item = u8>> Iterator for BitIterator<I> {
@@ -68,22 +88,23 @@ impl<I: Iterator<Item = u8>> Iterator for BitIterator<I> {
       return None;
     }
 
+    // TODO clean up getting the first bitfield
     let bitfield = match self.bitfield {
       Some(bitfield) => bitfield,
       // Get first bitfield
-      None => match self.bytes.next() {
-        Some(byte) => {
-          self.cur_byte = byte;
-          self.cur_idx = 7;
-          let bitfield = byte_to_bits(byte);
-          self.bitfield = Some(bitfield);
-          bitfield
-        }
-        None => {
-          self.done = true;
+      None => {
+        self.advance_byte();
+        if self.done {
           return None;
+        } else {
+          match self.bitfield {
+            Some(bitfield) => bitfield,
+            None => {
+              return None;
+            }
+          }
         }
-      },
+      }
     };
 
     let result = bitfield[self.cur_idx];
@@ -91,18 +112,7 @@ impl<I: Iterator<Item = u8>> Iterator for BitIterator<I> {
     // Advance cur byte and cur index
     match self.cur_idx {
       0 => {
-        // get next byte
-        // reset cur_idx to 7
-        match self.bytes.next() {
-          Some(byte) => {
-            self.cur_byte = byte;
-            self.bitfield = Some(byte_to_bits(byte));
-            self.cur_idx = 7;
-          }
-          None => {
-            self.done = true;
-          }
-        }
+        self.advance_byte();
       }
       _ => {
         // decrement cur_idx

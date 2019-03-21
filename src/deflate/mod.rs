@@ -17,9 +17,8 @@ pub fn inflate(bytes: &mut impl Iterator<Item = u8>) -> InflateResult {
   let mut data = vec![];
 
   loop {
-    let block = block_reader.read_block();
+    let block = block_reader.read_block(&mut data);
     let is_last = block.is_last;
-    data.extend_from_slice(&block.data);
     blocks.push(block);
     if is_last {
       break;
@@ -33,40 +32,68 @@ pub struct BlockReader<I: Iterator<Item = u8>> {
   bits: BitIterator<I>,
 }
 
+#[derive(Debug, PartialEq)]
+pub enum BlockEncoding {
+  HuffmanFixed,
+  HuffmanDynamic,
+  None,
+}
+
 impl<I: Iterator<Item = u8>> BlockReader<I> {
   pub fn new(bits: BitIterator<I>) -> BlockReader<I> {
     BlockReader { bits }
   }
 
-  // TODO - it is possible for a block to refer to data in a previous block, so
-  // this needs to keep track of the entire read data so far, i.e. add an extra
-  // param here to hold "data_so_far" or similar
-  pub fn read_block(&mut self) -> Block {
+  pub fn read_block(&mut self, data: &mut Vec<u8>) -> Block {
     let is_last = self.bits.read_bits_inv(1) == 1;
     let encoding = match self.bits.read_bits_inv(2) {
-      1 => HuffmanEncoding::Fixed,
-      2 => HuffmanEncoding::Dynamic,
-      _ => panic!("Unexpected block encoding"),
+      0 => BlockEncoding::None,
+      1 => BlockEncoding::HuffmanFixed,
+      2 => BlockEncoding::HuffmanDynamic,
+      v => unreachable!("Unexpected block encoding encountered: {}", v),
     };
-    let mut byte_bit_lengths;
-    let (data, decode_items) = match encoding {
-      HuffmanEncoding::Fixed => {
+    let mut byte_bit_lengths = vec![];
+    let decode_items = match encoding {
+      BlockEncoding::HuffmanFixed => {
         byte_bit_lengths = fixed_byte_bit_lengths();
-        self.decode_block_data(HuffmanNode::fixed(), None)
+        self.decode_block_data(data, HuffmanNode::fixed(), None)
       }
-      HuffmanEncoding::Dynamic => {
+      BlockEncoding::HuffmanDynamic => {
         let (literals_root, distances_root, _byte_bit_lengths) = self.decode_dynamic_data();
         byte_bit_lengths = _byte_bit_lengths;
-        self.decode_block_data(literals_root, Some(distances_root))
+        self.decode_block_data(data, literals_root, Some(distances_root))
       }
+      BlockEncoding::None => self.read_uncompressed_block(data),
     };
     Block {
       is_last,
       encoding,
-      data,
       decode_items,
       byte_bit_lengths,
     }
+  }
+
+  // TODO make the decodeitem output match that from infgen
+  fn read_uncompressed_block(&mut self, data: &mut Vec<u8>) -> Vec<DecodeItem> {
+    // skip to the next byte
+    self.bits.advance_byte();
+    let le = u32::from(self.bits.advance_byte().unwrap());
+    let be = u32::from(self.bits.advance_byte().unwrap());
+    // println!("{:x},{:x}", le, be);
+    let len: u32 = ((be << 8) | le) as u32;
+    // println!("len: {}, {:b}", len, len);
+
+    let le = u32::from(self.bits.advance_byte().unwrap());
+    let be = u32::from(self.bits.advance_byte().unwrap());
+    // println!("{:x},{:x}", le, be);
+    let _nlen: u32 = ((be << 8) | le) as u32;
+    // println!("nlen: {}, {:b}", nlen, nlen);
+    // TODO add an assertion that nlen is the one's complement of len
+
+    for _ in 0..len {
+      data.push(self.bits.advance_byte().unwrap());
+    }
+    vec![]
   }
 
   fn decode_dynamic_data(&mut self) -> (HuffmanNode, HuffmanNode, Vec<u8>) {
@@ -85,7 +112,7 @@ impl<I: Iterator<Item = u8>> BlockReader<I> {
     let mut i = 0;
     while i < (hlit + hdist + 258) {
       if let Some(code) = code_lengths_tree.decode_stream(&mut self.bits) {
-        assert!(code <= 19); // The code length encodings are all in the range 0-18
+        assert!(code <= 18); // The code length encodings are all in the range 0-18
         let code = code as u8;
         match code {
           0..=15 => {
@@ -120,10 +147,10 @@ impl<I: Iterator<Item = u8>> BlockReader<I> {
 
   fn decode_block_data(
     &mut self,
+    data: &mut Vec<u8>,
     literals_root: HuffmanNode,
     distances_root: Option<HuffmanNode>,
-  ) -> (Vec<u8>, Vec<DecodeItem>) {
-    let mut data = vec![];
+  ) -> Vec<DecodeItem> {
     let mut decode_items = vec![];
     let mut cur_literals = vec![];
     loop {
@@ -140,7 +167,7 @@ impl<I: Iterator<Item = u8>> BlockReader<I> {
           }
           break;
         }
-        Some(x) if x < 285 => {
+        Some(x) if x <= 285 => {
           // figure out length,distance
           // copy
           let length = self.decode_length(x);
@@ -166,7 +193,7 @@ impl<I: Iterator<Item = u8>> BlockReader<I> {
         None => panic!("Failed to decode from stream"),
       }
     }
-    (data, decode_items)
+    decode_items
   }
 
   fn decode_length(&mut self, code: u32) -> u32 {
@@ -211,19 +238,9 @@ impl<I: Iterator<Item = u8>> BlockReader<I> {
 #[derive(Debug)]
 pub struct Block {
   pub is_last: bool,
-  pub encoding: HuffmanEncoding,
-  pub data: Vec<u8>,
+  pub encoding: BlockEncoding,
   pub decode_items: Vec<DecodeItem>,
   pub byte_bit_lengths: Vec<u8>,
-}
-
-impl Block {
-  pub fn as_string(&self) -> String {
-    match String::from_utf8(self.data.to_vec()) {
-      Ok(s) => s,
-      _ => String::from("<binary data>"),
-    }
-  }
 }
 
 #[derive(Debug)]

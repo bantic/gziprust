@@ -96,10 +96,14 @@ impl<I: Iterator<Item = u8>> BlockReader<I> {
 
     let le = u32::from(self.bits.advance_byte().unwrap());
     let be = u32::from(self.bits.advance_byte().unwrap());
-    // println!("{:x},{:x}", le, be);
-    let _nlen: u32 = ((be << 8) | le) as u32;
-    // println!("nlen: {}, {:b}", nlen, nlen);
-    // TODO add an assertion that nlen is the one's complement of len
+    let nlen: u32 = ((be << 8) | le) as u32;
+    if len != (!nlen & 0xFFFF) {
+      panic!(
+        "Invalid length comparison for stored block {} != {}",
+        len,
+        (!nlen & 0xFFFF)
+      );
+    }
 
     for _ in 0..len {
       data.push(self.bits.advance_byte().unwrap());

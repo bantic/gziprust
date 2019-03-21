@@ -188,10 +188,13 @@ impl HuffmanRange {
   // for the initial, encoded huffman tree that is used to decode
   // the literals/lengths and distances trees
   fn from_header_code_keys(keys: &[u8]) -> Vec<HuffmanRange> {
-    const HUFFMAN_LENGTH_OFFSETS: [usize; 19] = [
+    const MAX_HEADER_CODE_KEYS: usize = 19;
+    assert!(keys.len() <= MAX_HEADER_CODE_KEYS);
+
+    const HUFFMAN_LENGTH_OFFSETS: [usize; MAX_HEADER_CODE_KEYS] = [
       16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
     ];
-    let mut code_lengths = [0; 19];
+    let mut code_lengths = [0; MAX_HEADER_CODE_KEYS];
     for i in 0..keys.len() {
       code_lengths[HUFFMAN_LENGTH_OFFSETS[i]] = keys[i];
     }

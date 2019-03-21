@@ -113,9 +113,14 @@ impl<I: Iterator<Item = u8>> BlockReader<I> {
 
   fn decode_dynamic_data(&mut self) -> (HuffmanNode, HuffmanNode, Vec<u8>) {
     let hlit = self.bits.read_bits_inv(5) as usize; // == # of lit/length codes - 257 (257-286)
-    let hdist = self.bits.read_bits_inv(5) as usize; // == # of distance codes - 1 (1-32)
+    let hdist = self.bits.read_bits_inv(5) as usize; // == # of distance codes - 1 (1-30)
     let hclen = self.bits.read_bits_inv(4) as usize; // == # of code length codes - 4 (4-19)
 
+    const MAX_LEN_CODES: usize = 286;
+    assert!(hlit < MAX_LEN_CODES);
+
+    const MAX_DIST_CODES: usize = 30;
+    assert!(hdist < MAX_DIST_CODES);
     let mut code_length_code_lengths: Vec<u8> = Vec::with_capacity(3 * (4 + hclen) as usize);
     for _ in 0..(hclen + 4) {
       code_length_code_lengths.push(self.bits.read_bits_inv(3) as u8);

@@ -22,14 +22,18 @@ impl<I: Iterator<Item = u8>> BitIterator<I> {
     let mut details = String::new();
     if let Some(bitfield) = self.bitfield {
       for (idx, &b) in bitfield.iter().enumerate() {
+        let s_val = if b { "1" } else { "0" };
         if idx == self.cur_idx + 1 {
-          details.push_str("<|");
+          details.push_str("<");
+          details.push_str(s_val);
+        } else {
+          details.push_str(" ");
+          details.push_str(s_val);
         }
-        details.push_str(if b { "1" } else { "0" });
       }
     }
     if self.cur_idx == 7 {
-      details.push_str("<|");
+      details.push_str("<");
     }
     println!("[{:x}@{}  {}]", self.cur_byte, self.cur_idx, details);
   }

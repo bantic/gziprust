@@ -52,7 +52,7 @@ impl HuffmanNode {
     let mut bitlength_count = vec![0; max_bit_length as usize + 1];
     for i in 0..range_len {
       if ranges[i].end == 0 && ranges[i].bit_length == 0 {
-        break;
+        continue;
       }
       let mut to_add = ranges[i].end;
       if i > 0 {
@@ -317,7 +317,7 @@ mod tests {
   }
 
   #[test]
-  fn test_dynamic() {
+  fn test_code_length_decoding() {
     // Example table taken from https://commandlinefanatic.com/cgi-bin/showarticle.cgi?article=art001
     let keys = vec![6, 7, 7, 3, 3, 2, 3, 3, 4, 4, 5, 4];
     let root = HuffmanNode::from_header_code_lengths(keys);
@@ -336,5 +336,89 @@ mod tests {
     assert_eq!(root.decode(&to_bits(0b11_1110, 6)), Some(16));
     assert_eq!(root.decode(&to_bits(0b111_1110, 7)), Some(17));
     assert_eq!(root.decode(&to_bits(0b111_1111, 7)), Some(18));
+  }
+
+  #[allow(clippy::cyclomatic_complexity)]
+  #[test]
+  fn test_dynamic() {
+    // Example 6 reconstructed from https://commandlinefanatic.com/cgi-bin/showarticle.cgi?article=art001
+    let keys = vec![
+      4, 4, 6, 6, 6, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 4, 4, 4, 6, 6, 6, 6, 6,
+    ];
+    assert_eq!(keys[0], 4);
+    assert_eq!(keys[2], 6);
+    assert_eq!(keys[4], 6);
+    assert_eq!(keys[5], 4);
+    assert_eq!(keys[7], 5);
+    assert_eq!(keys[14], 5);
+    assert_eq!(keys[15], 6);
+    let root = HuffmanNode::from_code_lengths(&keys);
+
+    assert_eq!(root.decode(&to_bits(0b0000, 4)), Some(0));
+    assert_eq!(root.decode(&to_bits(0b0001, 4)), Some(1));
+    assert_eq!(root.decode(&to_bits(0b10_1100, 6)), Some(2));
+    assert_eq!(root.decode(&to_bits(0b10_1101, 6)), Some(3));
+    assert_eq!(root.decode(&to_bits(0b10_1110, 6)), Some(4));
+    assert_eq!(root.decode(&to_bits(0b0010, 4)), Some(5));
+    assert_eq!(root.decode(&to_bits(0b0011, 4)), Some(6));
+    assert_eq!(root.decode(&to_bits(0b01110, 5)), Some(7));
+    assert_eq!(root.decode(&to_bits(0b01111, 5)), Some(8));
+    assert_eq!(root.decode(&to_bits(0b10000, 5)), Some(9));
+    assert_eq!(root.decode(&to_bits(0b10001, 5)), Some(10));
+    assert_eq!(root.decode(&to_bits(0b10010, 5)), Some(11));
+    assert_eq!(root.decode(&to_bits(0b10011, 5)), Some(12));
+    assert_eq!(root.decode(&to_bits(0b10100, 5)), Some(13));
+    assert_eq!(root.decode(&to_bits(0b10101, 5)), Some(14));
+    assert_eq!(root.decode(&to_bits(0b10_1111, 5)), Some(15));
+    assert_eq!(root.decode(&to_bits(0b11_0000, 5)), Some(16));
+    assert_eq!(root.decode(&to_bits(0b11_0001, 5)), Some(17));
+    assert_eq!(root.decode(&to_bits(0b11_0010, 5)), Some(18));
+    assert_eq!(root.decode(&to_bits(0b0100, 4)), Some(19));
+    assert_eq!(root.decode(&to_bits(0b0101, 4)), Some(20));
+    assert_eq!(root.decode(&to_bits(0b0110, 4)), Some(21));
+    assert_eq!(root.decode(&to_bits(0b11_0011, 6)), Some(22));
+    assert_eq!(root.decode(&to_bits(0b11_0100, 6)), Some(23));
+    assert_eq!(root.decode(&to_bits(0b11_0101, 6)), Some(24));
+    assert_eq!(root.decode(&to_bits(0b11_0110, 6)), Some(25));
+    assert_eq!(root.decode(&to_bits(0b11_0111, 6)), Some(26));
+    assert_eq!(root.decode(&to_bits(0b11_1000, 6)), None);
+  }
+
+  #[allow(clippy::cyclomatic_complexity)]
+  #[test]
+  fn test_dist_codes() {
+    // This was the one that was occasionally showing up as problematic
+    // in the decoding of bigger files. Having an initial code length of 0
+    // was causing the Huffman Tree generation to short-circuit early, and
+    // construct an incorrect table
+    let code_lengths = vec![
+      0, 7, 0, 6, 7, 6, 4, 5, 4, 4, 4, 4, 3, 4, 3, 5, 4, 4, 5, 4, 5, 6,
+    ];
+    let root = HuffmanNode::from_code_lengths(&code_lengths);
+    assert_eq!(root.decode(&to_bits(0b000, 3)), Some(12));
+    assert_eq!(root.decode(&to_bits(0b001, 3)), Some(14));
+    assert_eq!(root.decode(&to_bits(0b010, 3)), None);
+    assert_eq!(root.decode(&to_bits(0b0100, 4)), Some(6));
+    assert_eq!(root.decode(&to_bits(0b0101, 4)), Some(8));
+    assert_eq!(root.decode(&to_bits(0b0110, 4)), Some(9));
+    assert_eq!(root.decode(&to_bits(0b0111, 4)), Some(10));
+    assert_eq!(root.decode(&to_bits(0b1000, 4)), Some(11));
+    assert_eq!(root.decode(&to_bits(0b1001, 4)), Some(13));
+    assert_eq!(root.decode(&to_bits(0b1010, 4)), Some(16));
+    assert_eq!(root.decode(&to_bits(0b1010, 4)), Some(16));
+    assert_eq!(root.decode(&to_bits(0b1011, 4)), Some(17));
+    assert_eq!(root.decode(&to_bits(0b1100, 4)), Some(19));
+    assert_eq!(root.decode(&to_bits(0b1101, 4)), None);
+    assert_eq!(root.decode(&to_bits(0b11010, 5)), Some(7));
+    assert_eq!(root.decode(&to_bits(0b11011, 5)), Some(15));
+    assert_eq!(root.decode(&to_bits(0b11100, 5)), Some(18));
+    assert_eq!(root.decode(&to_bits(0b11101, 5)), Some(20));
+    assert_eq!(root.decode(&to_bits(0b11110, 5)), None);
+    assert_eq!(root.decode(&to_bits(0b11_1100, 6)), Some(3));
+    assert_eq!(root.decode(&to_bits(0b11_1101, 6)), Some(5));
+    assert_eq!(root.decode(&to_bits(0b11_1110, 6)), Some(21));
+    assert_eq!(root.decode(&to_bits(0b11_1111, 6)), None);
+    assert_eq!(root.decode(&to_bits(0b111_1110, 7)), Some(1));
+    assert_eq!(root.decode(&to_bits(0b111_1111, 7)), Some(4));
   }
 }

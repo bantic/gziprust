@@ -124,7 +124,8 @@ impl<I: Iterator<Item = u8>> BlockReader<I> {
     assert!(hdist < MAX_DIST_CODES);
     let mut code_length_code_lengths: Vec<u8> = Vec::with_capacity(3 * (4 + hclen) as usize);
     for _ in 0..(hclen + 4) {
-      code_length_code_lengths.push(self.bits.read_bits_inv(3) as u8);
+      let code = self.bits.read_bits_inv(3) as u8;
+      code_length_code_lengths.push(code);
     }
 
     let code_lengths_tree = HuffmanNode::from_header_code_lengths(code_length_code_lengths);

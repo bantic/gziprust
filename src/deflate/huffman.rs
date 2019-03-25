@@ -129,8 +129,8 @@ pub fn fixed_byte_bit_lengths() -> Vec<u8> {
   byte_bit_lengths.extend_from_slice(&[9; 112]);
   assert_eq!(byte_bit_lengths[143], 8); // 0-143: 8 bits
   assert_eq!(byte_bit_lengths[144], 9); // 144-255: 9 bits
-  assert_eq!(byte_bit_lengths[255], 9);
-  assert_eq!(byte_bit_lengths.len(), 256);
+  assert_eq!(byte_bit_lengths[255], 9); // 256 (stop code): 9 bits
+  assert_eq!(byte_bit_lengths.len(), 256); // No distance codes
   byte_bit_lengths
 }
 

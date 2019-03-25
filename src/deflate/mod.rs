@@ -4,11 +4,12 @@ pub use huffman::HuffmanEncoding;
 
 use crate::crc32;
 use bit_iterator::BitIterator;
-use huffman::{fixed_byte_bit_lengths, HuffmanNode};
+use huffman::HuffmanNode;
 
 struct Inflate<I: Iterator<Item = u8>> {
   result: InflateResult,
   bits: BitIterator<I>,
+  cur_block_index: usize,
 }
 
 impl<I: Iterator<Item = u8>> Inflate<I> {
@@ -16,12 +17,15 @@ impl<I: Iterator<Item = u8>> Inflate<I> {
     Inflate {
       result: InflateResult::empty(),
       bits,
+      cur_block_index: 0,
     }
   }
 
   fn inflate(&mut self) {
+    self.cur_block_index = 0;
     loop {
       let block = self.read_block();
+      self.cur_block_index += 1;
       let is_last = block.is_last;
       self.result.blocks.push(block);
       if is_last {
@@ -39,28 +43,22 @@ impl<I: Iterator<Item = u8>> Inflate<I> {
       2 => BlockEncoding::HuffmanDynamic,
       v => unreachable!("Unexpected block encoding encountered: {}", v),
     };
-    let mut byte_bit_lengths = vec![];
-    let decode_items = match encoding {
+    match encoding {
       BlockEncoding::HuffmanFixed => {
-        byte_bit_lengths = fixed_byte_bit_lengths();
-        self.decode_block_data(HuffmanNode::fixed(), None)
+        self.decode_block_data(HuffmanNode::fixed(), None);
       }
       BlockEncoding::HuffmanDynamic => {
-        let (literals_root, distances_root, _byte_bit_lengths) = self.decode_dynamic_data();
-        byte_bit_lengths = _byte_bit_lengths;
-        self.decode_block_data(literals_root, Some(distances_root))
+        let (literals_root, distances_root) = self.decode_dynamic_data();
+        self.decode_block_data(literals_root, Some(distances_root));
       }
-      BlockEncoding::Stored => self.read_stored_block(),
-    };
-    Block {
-      is_last,
-      encoding,
-      decode_items,
-      byte_bit_lengths,
+      BlockEncoding::Stored => {
+        self.read_stored_block();
+      }
     }
+    Block { is_last, encoding }
   }
 
-  fn decode_dynamic_data(&mut self) -> (HuffmanNode, HuffmanNode, Vec<u8>) {
+  fn decode_dynamic_data(&mut self) -> (HuffmanNode, HuffmanNode) {
     let hlit = self.bits.read_bits_inv(5) as usize; // == # of lit/length codes - 257 (257-286)
     let hdist = self.bits.read_bits_inv(5) as usize; // == # of distance codes - 1 (1-30)
     let hclen = self.bits.read_bits_inv(4) as usize; // == # of code length codes - 4 (4-19)
@@ -107,12 +105,10 @@ impl<I: Iterator<Item = u8>> Inflate<I> {
       }
     }
 
-    let byte_bit_lengths = alphabet_lens[0..255].to_vec();
-
     // build the literals ranges
     let literals_tree = HuffmanNode::from_code_lengths(&alphabet_lens[0..(hlit + 257)]);
     let distance_tree = HuffmanNode::from_code_lengths(&alphabet_lens[(hlit + 257)..]);
-    (literals_tree, distance_tree, byte_bit_lengths)
+    (literals_tree, distance_tree)
   }
 
   // TODO make the decodeitem output match that from infgen
@@ -141,22 +137,36 @@ impl<I: Iterator<Item = u8>> Inflate<I> {
   }
 
   fn push_literal(&mut self, byte: u8) {
-    // TODO: push a decode item for this literal
-
+    let data = DecodeData {
+      bits: self.bits.flush_buffer(),
+      block_id: self.cur_block_index,
+    };
+    self
+      .result
+      .decode_items
+      .push(DecodeItem::Literal(byte, data));
     self.append_data(byte);
   }
 
   fn push_match(&mut self, length: u32, distance: u32) {
-    // TODO: push a decode item for this match
+    assert!(self.result.data.len() > distance as usize);
 
-    // copy data
-    let mut copied_data = vec![];
+    // Copy match to data
     let v_idx = self.result.data.len() - distance as usize;
     for i in 0..length {
       let val = self.result.data[v_idx + i as usize];
-      copied_data.push(val);
       self.append_data(val);
     }
+
+    // push DecodeItem
+    let data = DecodeData {
+      bits: self.bits.flush_buffer(),
+      block_id: self.cur_block_index,
+    };
+    self
+      .result
+      .decode_items
+      .push(DecodeItem::Match(length, distance, data));
   }
 
   fn append_data(&mut self, byte: u8) {
@@ -168,47 +178,33 @@ impl<I: Iterator<Item = u8>> Inflate<I> {
     self.result.crc32 = crc32::update(self.result.crc32, byte);
   }
 
-  fn decode_block_data(
-    &mut self,
-    literals_root: HuffmanNode,
-    distances_root: Option<HuffmanNode>,
-  ) -> Vec<DecodeItem> {
-    let mut decode_items = vec![];
-    let mut cur_literals = vec![];
+  fn decode_block_data(&mut self, literals_root: HuffmanNode, distances_root: Option<HuffmanNode>) {
+    const MAX_LITERAL_CODE: u32 = 255;
+    const STOP_CODE: u32 = 256;
+    const MIN_DISTANCE_CODE: u32 = STOP_CODE + 1;
+    const MAX_DISTANCE_CODE: u32 = 285;
+
     loop {
+      self.bits.flush_buffer();
       match literals_root.decode_stream(&mut self.bits) {
-        Some(x) if x < 256 => {
-          self.push_literal(x as u8);
-          cur_literals.push(x as u8);
-        }
-        Some(256) => {
-          // Stop
-          if !cur_literals.is_empty() {
-            decode_items.push(DecodeItem::Literal(cur_literals.clone()));
-            cur_literals.clear();
+        None => unreachable!("Failed to decode from stream"),
+        Some(x) => match x {
+          0..=MAX_LITERAL_CODE => {
+            self.push_literal(x as u8);
           }
-          break;
-        }
-        Some(x) if x <= 285 => {
-          // figure out length,distance
-          // copy
-          let length = self.decode_length(x);
-          let distance = self.decode_distance(&distances_root);
-
-          self.push_match(length, distance);
-
-          // Append to decode stream
-          if !cur_literals.is_empty() {
-            decode_items.push(DecodeItem::Literal(cur_literals.clone()));
-            cur_literals.clear();
+          STOP_CODE => {
+            break;
           }
-          decode_items.push(DecodeItem::Match(length, distance));
-        }
-        Some(x) => panic!("Unexpected decoded value {}", x),
-        None => panic!("Failed to decode from stream"),
+          MIN_DISTANCE_CODE..=MAX_DISTANCE_CODE => {
+            let length = self.decode_length(x);
+            let distance = self.decode_distance(&distances_root);
+
+            self.push_match(length, distance);
+          }
+          _ => unreachable!("Unexpected decoded value {}", x),
+        },
       }
     }
-    decode_items
   }
 
   fn decode_distance(&mut self, distances_root: &Option<HuffmanNode>) -> u32 {
@@ -252,6 +248,7 @@ impl<I: Iterator<Item = u8>> Inflate<I> {
 
 pub struct InflateResult {
   pub blocks: Vec<Block>,
+  pub decode_items: Vec<DecodeItem>,
   pub data: Vec<u8>,
   pub crc32: u32,
 }
@@ -261,6 +258,7 @@ impl InflateResult {
     InflateResult {
       blocks: vec![],
       data: vec![],
+      decode_items: vec![],
       crc32: crc32::initial_value(),
     }
   }
@@ -284,28 +282,34 @@ pub enum BlockEncoding {
 pub struct Block {
   pub is_last: bool,
   pub encoding: BlockEncoding,
-  pub decode_items: Vec<DecodeItem>,
-  pub byte_bit_lengths: Vec<u8>,
 }
 
 #[derive(Debug)]
 pub enum DecodeItem {
-  Literal(Vec<u8>),
-  Match(u32, u32), // length, distance
+  Literal(u8, DecodeData),
+  Match(u32, u32, DecodeData),
+}
+
+#[derive(Debug)]
+pub struct DecodeData {
+  pub bits: Vec<bool>,
+  pub block_id: usize,
 }
 
 use std::fmt;
 impl fmt::Display for DecodeItem {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
-      DecodeItem::Literal(bytes) => {
-        let string = match String::from_utf8(bytes.to_vec()) {
-          Ok(v) => v,
-          _ => String::from("<binary data>"),
+      DecodeItem::Literal(byte, data) => {
+        let string = match byte {
+          0x20..=0x7e => (*byte as char).to_string(),
+          _ => format!("<{}>", byte),
         };
-        write!(f, "literal '{}", string)
+        write!(f, "literal {}, {:?}", string, data)
       }
-      DecodeItem::Match(length, distance) => write!(f, "match {} {}", length, distance),
+      DecodeItem::Match(length, distance, data) => {
+        write!(f, "match {} {} {:?}", length, distance, data)
+      }
     }
   }
 }

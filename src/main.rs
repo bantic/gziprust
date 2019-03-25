@@ -59,13 +59,15 @@ fn print_gzip_info(gz: Gzip, config: Config) {
   println!("Decompressed {} blocks", &gz.blocks.len());
 
   if config.debug {
+    println!("Decompressed Data: {}", gz.as_string());
+
     for (i, block) in gz.blocks.into_iter().enumerate() {
       println!("==================================");
       println!(
         "Block {}: is_last? {}, encoding: {:?}",
         i, block.is_last, block.encoding
       );
-      for item in &block.decode_items {
+      for item in &gz.decode_items {
         println!("\t{}", item);
       }
 

@@ -1,9 +1,10 @@
-use crate::deflate::{inflate, Block};
+use crate::deflate::{inflate, Block, DecodeItem};
 
 #[derive(Debug)]
 pub struct Gzip {
   pub headers: Headers,
   pub blocks: Vec<Block>,
+  pub decode_items: Vec<DecodeItem>,
   pub data: Vec<u8>,
   pub crc32: u32,
   pub size: u32,
@@ -29,6 +30,7 @@ impl Gzip {
       headers,
       blocks: inflate_result.blocks,
       data: inflate_result.data,
+      decode_items: inflate_result.decode_items,
       crc32,
       calculated_crc32: inflate_result.crc32,
       size,

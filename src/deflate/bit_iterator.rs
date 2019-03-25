@@ -2,8 +2,9 @@ pub struct BitIterator<I: Iterator<Item = u8>> {
   bytes: I,
   bitfield: Option<[bool; 8]>,
   cur_byte: u8,
-  pub cur_idx: usize,
+  cur_idx: usize, // index of the bit within cur_byte
   done: bool,
+  bit_buffer: Vec<bool>, // the bits read since the last time the buffer was flushed
 }
 
 impl<I: Iterator<Item = u8>> BitIterator<I> {
@@ -13,8 +14,15 @@ impl<I: Iterator<Item = u8>> BitIterator<I> {
       bitfield: None,
       cur_byte: 0,
       cur_idx: 0,
+      bit_buffer: vec![],
       done: false,
     }
+  }
+
+  pub fn flush_buffer(&mut self) -> Vec<bool> {
+    let result = self.bit_buffer.clone();
+    self.bit_buffer.clear();
+    result
   }
 
   #[allow(dead_code)]
@@ -46,6 +54,7 @@ impl<I: Iterator<Item = u8>> BitIterator<I> {
         Some(false) => 0,
         None => panic!("Unexpected end of bits"),
       };
+      self.bit_buffer.push(bit == 1);
       value |= bit << i;
     }
     value
@@ -59,6 +68,7 @@ impl<I: Iterator<Item = u8>> BitIterator<I> {
         Some(false) => 0,
         None => panic!("Unexpected end of bits"),
       };
+      self.bit_buffer.push(bit == 1);
       value |= bit << (count - 1 - i);
     }
     value
@@ -75,11 +85,10 @@ impl<I: Iterator<Item = u8>> BitIterator<I> {
   }
 
   // TODO add some tests to ensure this is done correctly
-  fn advance_byte(&mut self) -> Option<u8> {
+  fn advance_byte(&mut self) {
     if self.done {
-      None
+      return;
     } else {
-      let result = self.cur_byte;
       match self.bytes.next() {
         Some(byte) => {
           self.cur_idx = 7;
@@ -90,7 +99,6 @@ impl<I: Iterator<Item = u8>> BitIterator<I> {
           self.done = true;
         }
       };
-      Some(result)
     }
   }
 }
@@ -122,6 +130,7 @@ impl<I: Iterator<Item = u8>> Iterator for BitIterator<I> {
     };
 
     let result = bitfield[self.cur_idx];
+    self.bit_buffer.push(result);
 
     // Advance cur byte and cur index
     match self.cur_idx {

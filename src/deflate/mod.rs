@@ -140,6 +140,25 @@ impl<I: Iterator<Item = u8>> Inflate<I> {
     vec![]
   }
 
+  fn push_literal(&mut self, byte: u8) {
+    // TODO: push a decode item for this literal
+
+    self.append_data(byte);
+  }
+
+  fn push_match(&mut self, length: u32, distance: u32) {
+    // TODO: push a decode item for this match
+
+    // copy data
+    let mut copied_data = vec![];
+    let v_idx = self.result.data.len() - distance as usize;
+    for i in 0..length {
+      let val = self.result.data[v_idx + i as usize];
+      copied_data.push(val);
+      self.append_data(val);
+    }
+  }
+
   fn append_data(&mut self, byte: u8) {
     self.result.data.push(byte);
     self.update_crc32(byte);
@@ -159,7 +178,7 @@ impl<I: Iterator<Item = u8>> Inflate<I> {
     loop {
       match literals_root.decode_stream(&mut self.bits) {
         Some(x) if x < 256 => {
-          self.append_data(x as u8);
+          self.push_literal(x as u8);
           cur_literals.push(x as u8);
         }
         Some(256) => {
@@ -176,14 +195,7 @@ impl<I: Iterator<Item = u8>> Inflate<I> {
           let length = self.decode_length(x);
           let distance = self.decode_distance(&distances_root);
 
-          // copy data
-          let mut copied_data = vec![];
-          let v_idx = self.result.data.len() - distance as usize;
-          for i in 0..length {
-            let val = self.result.data[v_idx + i as usize];
-            copied_data.push(val);
-            self.append_data(val);
-          }
+          self.push_match(length, distance);
 
           // Append to decode stream
           if !cur_literals.is_empty() {

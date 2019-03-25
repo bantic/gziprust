@@ -1,10 +1,22 @@
 pub fn crc32(bytes: &[u8]) -> u32 {
-  let mut crc32: u32 = 0xFFFF_FFFF;
+  let mut crc32: u32 = initial_value();
   for byte in bytes {
-    let lookup_idx = (crc32 ^ u32::from(*byte)) & 0xFF;
-    crc32 = (crc32 >> 8) ^ LOOKUP_TABLE[lookup_idx as usize];
+    crc32 = update(crc32, *byte)
   }
-  crc32 ^ 0xFFFF_FFFF
+  finalize(crc32)
+}
+
+pub const fn initial_value() -> u32 {
+  0xFFFF_FFFF
+}
+
+pub fn update(cur_crc: u32, byte: u8) -> u32 {
+  let lookup_idx = (cur_crc ^ u32::from(byte)) & 0xFF;
+  (cur_crc >> 8) ^ LOOKUP_TABLE[lookup_idx as usize]
+}
+
+pub fn finalize(cur_crc: u32) -> u32 {
+  cur_crc ^ initial_value()
 }
 
 #[allow(clippy::unreadable_literal)]

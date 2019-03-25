@@ -1,4 +1,3 @@
-use crate::crc32;
 use crate::deflate::{inflate, Block};
 
 #[derive(Debug)]
@@ -8,6 +7,7 @@ pub struct Gzip {
   pub data: Vec<u8>,
   pub crc32: u32,
   pub size: u32,
+  calculated_crc32: u32,
 }
 
 impl Gzip {
@@ -30,6 +30,7 @@ impl Gzip {
       blocks: inflate_result.blocks,
       data: inflate_result.data,
       crc32,
+      calculated_crc32: inflate_result.crc32,
       size,
     }
   }
@@ -39,7 +40,7 @@ impl Gzip {
   }
 
   pub fn crc_is_valid(&self) -> bool {
-    self.crc32 == crc32::crc32(&self.data)
+    self.crc32 == self.calculated_crc32
   }
 
   pub fn as_string(&self) -> String {

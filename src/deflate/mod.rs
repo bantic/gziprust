@@ -2,60 +2,36 @@ mod bit_iterator;
 mod huffman;
 pub use huffman::HuffmanEncoding;
 
+use crate::crc32;
 use bit_iterator::BitIterator;
 use huffman::{fixed_byte_bit_lengths, HuffmanNode};
 
-pub struct InflateResult {
-  pub blocks: Vec<Block>,
-  pub data: Vec<u8>,
+struct Inflate<I: Iterator<Item = u8>> {
+  result: InflateResult,
+  bits: BitIterator<I>,
 }
 
-impl InflateResult {
-  fn new() -> InflateResult {
-    InflateResult {
-      blocks: vec![],
-      data: vec![],
+impl<I: Iterator<Item = u8>> Inflate<I> {
+  fn new(bits: BitIterator<I>) -> Inflate<I> {
+    Inflate {
+      result: InflateResult::empty(),
+      bits,
     }
   }
 
-  fn inflate(&mut self, bytes: &mut impl Iterator<Item = u8>) {
-    let bits = BitIterator::new(bytes);
-    let mut block_reader = BlockReader::new(bits);
-
+  fn inflate(&mut self) {
     loop {
-      let block = block_reader.read_block(&mut self.data);
+      let block = self.read_block();
       let is_last = block.is_last;
-      self.blocks.push(block);
+      self.result.blocks.push(block);
       if is_last {
         break;
       }
     }
-  }
-}
-
-pub fn inflate(bytes: &mut impl Iterator<Item = u8>) -> InflateResult {
-  let mut result = InflateResult::new();
-  result.inflate(bytes);
-  result
-}
-
-pub struct BlockReader<I: Iterator<Item = u8>> {
-  pub bits: BitIterator<I>,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum BlockEncoding {
-  HuffmanFixed,
-  HuffmanDynamic,
-  Stored,
-}
-
-impl<I: Iterator<Item = u8>> BlockReader<I> {
-  pub fn new(bits: BitIterator<I>) -> BlockReader<I> {
-    BlockReader { bits }
+    self.result.crc32 = crc32::finalize(self.result.crc32)
   }
 
-  pub fn read_block(&mut self, data: &mut Vec<u8>) -> Block {
+  fn read_block(&mut self) -> Block {
     let is_last = self.bits.read_bits_inv(1) == 1;
     let encoding = match self.bits.read_bits_inv(2) {
       0 => BlockEncoding::Stored,
@@ -67,14 +43,14 @@ impl<I: Iterator<Item = u8>> BlockReader<I> {
     let decode_items = match encoding {
       BlockEncoding::HuffmanFixed => {
         byte_bit_lengths = fixed_byte_bit_lengths();
-        self.decode_block_data(data, HuffmanNode::fixed(), None)
+        self.decode_block_data(HuffmanNode::fixed(), None)
       }
       BlockEncoding::HuffmanDynamic => {
         let (literals_root, distances_root, _byte_bit_lengths) = self.decode_dynamic_data();
         byte_bit_lengths = _byte_bit_lengths;
-        self.decode_block_data(data, literals_root, Some(distances_root))
+        self.decode_block_data(literals_root, Some(distances_root))
       }
-      BlockEncoding::Stored => self.read_stored_block(data),
+      BlockEncoding::Stored => self.read_stored_block(),
     };
     Block {
       is_last,
@@ -82,34 +58,6 @@ impl<I: Iterator<Item = u8>> BlockReader<I> {
       decode_items,
       byte_bit_lengths,
     }
-  }
-
-  // TODO make the decodeitem output match that from infgen
-  fn read_stored_block(&mut self, data: &mut Vec<u8>) -> Vec<DecodeItem> {
-    // skip to the next byte
-    self.bits.discard_extra_bits();
-    let le = self.bits.read_bits_inv(8);
-    let be = self.bits.read_bits_inv(8);
-    // println!("{:x},{:x}", le, be);
-    let len: u32 = ((be << 8) | le) as u32;
-    // println!("len: {}, {:b}", len, len);
-
-    let le = self.bits.read_bits_inv(8);
-    let be = self.bits.read_bits_inv(8);
-    let nlen: u32 = ((be << 8) | le) as u32;
-    if len != (!nlen & 0xFFFF) {
-      panic!(
-        "Invalid length comparison for stored block len {}, nlen {}, cmp val {}",
-        len,
-        nlen,
-        (!nlen & 0xFFFF)
-      );
-    }
-
-    for _ in 0..len {
-      data.push(self.bits.read_bits_inv(8) as u8);
-    }
-    vec![]
   }
 
   fn decode_dynamic_data(&mut self) -> (HuffmanNode, HuffmanNode, Vec<u8>) {
@@ -167,9 +115,42 @@ impl<I: Iterator<Item = u8>> BlockReader<I> {
     (literals_tree, distance_tree, byte_bit_lengths)
   }
 
+  // TODO make the decodeitem output match that from infgen
+  fn read_stored_block(&mut self) -> Vec<DecodeItem> {
+    // skip to the next byte
+    self.bits.discard_extra_bits();
+
+    // Read 2-byte `len` value as LE
+    let le = self.bits.read_bits_inv(8);
+    let be = self.bits.read_bits_inv(8);
+    let len: u32 = ((be << 8) | le) as u32;
+
+    // Read 2-byte `nlen` value as LE
+    // nlen is one's complement of len, see: https://www.w3.org/Graphics/PNG/RFC-1951#noncompressed
+    let le = self.bits.read_bits_inv(8);
+    let be = self.bits.read_bits_inv(8);
+    let nlen: u32 = ((be << 8) | le) as u32;
+
+    assert!(len == (!nlen & 0xFFFF));
+
+    for _ in 0..len {
+      let byte = self.bits.read_bits_inv(8) as u8;
+      self.append_data(byte);
+    }
+    vec![]
+  }
+
+  fn append_data(&mut self, byte: u8) {
+    self.result.data.push(byte);
+    self.update_crc32(byte);
+  }
+
+  fn update_crc32(&mut self, byte: u8) {
+    self.result.crc32 = crc32::update(self.result.crc32, byte);
+  }
+
   fn decode_block_data(
     &mut self,
-    data: &mut Vec<u8>,
     literals_root: HuffmanNode,
     distances_root: Option<HuffmanNode>,
   ) -> Vec<DecodeItem> {
@@ -178,7 +159,7 @@ impl<I: Iterator<Item = u8>> BlockReader<I> {
     loop {
       match literals_root.decode_stream(&mut self.bits) {
         Some(x) if x < 256 => {
-          data.push(x as u8);
+          self.append_data(x as u8);
           cur_literals.push(x as u8);
         }
         Some(256) => {
@@ -197,11 +178,11 @@ impl<I: Iterator<Item = u8>> BlockReader<I> {
 
           // copy data
           let mut copied_data = vec![];
-          let v_idx = data.len() - distance as usize;
+          let v_idx = self.result.data.len() - distance as usize;
           for i in 0..length {
-            let val = data[v_idx + i as usize];
+            let val = self.result.data[v_idx + i as usize];
             copied_data.push(val);
-            data.push(val);
+            self.append_data(val);
           }
 
           // Append to decode stream
@@ -216,6 +197,24 @@ impl<I: Iterator<Item = u8>> BlockReader<I> {
       }
     }
     decode_items
+  }
+
+  fn decode_distance(&mut self, distances_root: &Option<HuffmanNode>) -> u32 {
+    const EXTRA_DIST_ADDEND: [u32; 26] = [
+      5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073,
+      4097, 6145, 8193, 12289, 16385, 24577,
+    ];
+    let code = match distances_root {
+      Some(node) => node.decode_stream(&mut self.bits).unwrap(),
+      None => self.bits.read_bits(5),
+    };
+    if code <= 3 {
+      code + 1 // minimum distance is 1, so code 0 => distance 1
+    } else {
+      let extra_bits_to_read = (code as u8 - 2) / 2;
+      let extra_dist = self.bits.read_bits_inv(extra_bits_to_read);
+      extra_dist + EXTRA_DIST_ADDEND[code as usize - 4]
+    }
   }
 
   fn decode_length(&mut self, code: u32) -> u32 {
@@ -237,24 +236,36 @@ impl<I: Iterator<Item = u8>> BlockReader<I> {
       _ => panic!("Unexpected code for length {}", code),
     }
   }
+}
 
-  fn decode_distance(&mut self, distances_root: &Option<HuffmanNode>) -> u32 {
-    const EXTRA_DIST_ADDEND: [u32; 26] = [
-      5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073,
-      4097, 6145, 8193, 12289, 16385, 24577,
-    ];
-    let code = match distances_root {
-      Some(node) => node.decode_stream(&mut self.bits).unwrap(),
-      None => self.bits.read_bits(5),
-    };
-    if code <= 3 {
-      code + 1 // minimum distance is 1, so code 0 => distance 1
-    } else {
-      let extra_bits_to_read = (code as u8 - 2) / 2;
-      let extra_dist = self.bits.read_bits_inv(extra_bits_to_read);
-      extra_dist + EXTRA_DIST_ADDEND[code as usize - 4]
+pub struct InflateResult {
+  pub blocks: Vec<Block>,
+  pub data: Vec<u8>,
+  pub crc32: u32,
+}
+
+impl InflateResult {
+  fn empty() -> InflateResult {
+    InflateResult {
+      blocks: vec![],
+      data: vec![],
+      crc32: crc32::initial_value(),
     }
   }
+}
+
+pub fn inflate(bytes: &mut impl Iterator<Item = u8>) -> InflateResult {
+  let bits = BitIterator::new(bytes);
+  let mut inflator = Inflate::new(bits);
+  inflator.inflate();
+  inflator.result
+}
+
+#[derive(Debug, PartialEq)]
+pub enum BlockEncoding {
+  HuffmanFixed,
+  HuffmanDynamic,
+  Stored,
 }
 
 #[derive(Debug)]

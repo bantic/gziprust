@@ -1,16 +1,37 @@
 use chrono::NaiveDateTime;
-use std::env;
 use std::error::Error;
 use std::fs::File;
 use std::io::Read;
+use std::io::Write;
+use std::path::PathBuf;
+use structopt::StructOpt;
 
-mod config;
-
-use crate::config::Config;
 use gziprust::gzip::Gzip;
-use std::process;
 
-fn print_gzip_info(gz: Gzip, config: Config) {
+#[derive(Debug, StructOpt)]
+#[structopt(
+  name = "Gzip Decoder",
+  about = "A tool for decoding and exploring Gzip'd files"
+)]
+pub struct Opt {
+  /// Activate debug mode
+  #[structopt(short = "d", long = "debug")]
+  debug: bool,
+
+  /// Write detailed byte-by-byte JSON data
+  #[structopt(long = "json")]
+  json: bool,
+
+  /// Input .gz file
+  #[structopt(parse(from_os_str))]
+  input: PathBuf,
+
+  /// Output file
+  #[structopt(short = "o", long = "output", parse(from_os_str))]
+  output: Option<PathBuf>,
+}
+
+fn print_gzip_info(gz: &Gzip) {
   println!("Gzip Info");
   println!("Compression: {:?}", gz.headers.compression);
   println!(
@@ -57,73 +78,65 @@ fn print_gzip_info(gz: Gzip, config: Config) {
   );
 
   println!("Decompressed {} blocks", &gz.blocks.len());
+}
 
-  if config.debug {
-    println!("Decompressed Data: {}", gz.as_string());
+fn print_debug_gzip_info(gz: &Gzip) {
+  println!("Decompressed Data: {}", gz.as_string());
 
-    for (i, block) in gz.blocks.into_iter().enumerate() {
-      println!("==================================");
-      println!(
-        "Block {}: is_last? {}, encoding: {:?}",
-        i, block.is_last, block.encoding
-      );
-      for item in &gz.decode_items {
-        println!("\t{}", item);
-      }
-
-      // Print out detailed info suitable for visualizing
-      // let mut idx = 0;
-      // let mut match_idx = 0;
-      // for item in &block.decode_items {
-      //   match item {
-      //     DecodeItem::Literal(bytes) => {
-      //       for byte in bytes {
-      //         println!(
-      //           "literal,{},{},{}",
-      //           byte, block.byte_bit_lengths[*byte as usize], idx
-      //         );
-      //         idx += 1;
-      //       }
-      //     }
-      //     DecodeItem::Match(length, distance) => {
-      //       let match_start_idx = idx;
-      //       for l in 0..*length {
-      //         let orig_idx = (match_start_idx + l) - distance;
-      //         let byte = &block.data[orig_idx as usize];
-      //         println!(
-      //           "match,{},{},{},{},{},{}",
-      //           byte, length, distance, orig_idx, idx, match_idx
-      //         );
-      //         idx += 1;
-      //       }
-      //       match_idx += 1;
-      //     }
-      //   };
-      // }
-
-      println!("==================================");
+  for (i, block) in gz.blocks.iter().enumerate() {
+    println!("==================================");
+    println!(
+      "Block {}: is_last? {}, encoding: {:?}",
+      i, block.is_last, block.encoding
+    );
+    for item in &gz.decode_items {
+      println!("\t{}", item);
     }
+    println!("==================================");
   }
 }
 
-pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
+fn write_serialized_gzip(gz: &Gzip, buffer: std::fs::File) {
+  serde_json::to_writer(buffer, &gz.decode_items).expect("failed to write serialize");
+}
+
+pub fn run(opts: Opt) -> Result<(), Box<dyn Error>> {
   let mut buf = vec![];
-  let mut file = File::open(&config.filename)?;
+  let mut file = File::open(&opts.input)?;
   let num_read = file.read_to_end(&mut buf)?;
-  println!("Read {} bytes from {}", num_read, &config.filename);
+  println!("Read {} bytes from {:?}", num_read, &opts.input);
   let gzip = Gzip::new(buf);
-  print_gzip_info(gzip, config);
+
+  match opts.output {
+    Some(path) => {
+      let mut buffer = File::create(path).expect("Failed to open output path");
+      if opts.json {
+        write_serialized_gzip(&gzip, buffer);
+      } else {
+        write_data(&gzip, &mut buffer);
+      }
+    }
+    None if opts.json => eprintln!("Must specify an output path if opts.json"),
+    _ => (),
+  }
+
+  print_gzip_info(&gzip);
+
+  if opts.debug {
+    print_debug_gzip_info(&gzip);
+  }
+
   Ok(())
 }
 
-fn main() {
-  let config = Config::new(env::args()).unwrap_or_else(|err| {
-    eprintln!("Error reading args: {}", err);
-    process::exit(1);
-  });
+fn write_data(gz: &Gzip, buffer: &mut std::fs::File) {
+  buffer.write_all(&gz.data).expect("Failed");
+}
 
-  if let Err(e) = run(config) {
-    eprint!("Error: {}", e);
-    process::exit(1);
-  }
+fn main() {
+  let opts = Opt::from_args();
+  match run(opts) {
+    Ok(()) => (),
+    Err(e) => eprintln!("Error {}", e),
+  };
 }

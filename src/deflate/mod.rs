@@ -144,7 +144,7 @@ impl<I: Iterator<Item = u8>> Inflate<I> {
     self
       .result
       .decode_items
-      .push(DecodeItem::Literal(byte, data));
+      .push(DecodeItem::Literal { value: byte, data });
     self.append_data(byte);
   }
 
@@ -163,10 +163,11 @@ impl<I: Iterator<Item = u8>> Inflate<I> {
       bits: self.bits.flush_buffer(),
       block_id: self.cur_block_index,
     };
-    self
-      .result
-      .decode_items
-      .push(DecodeItem::Match(length, distance, data));
+    self.result.decode_items.push(DecodeItem::Match {
+      length,
+      distance,
+      data,
+    });
   }
 
   fn append_data(&mut self, byte: u8) {
@@ -284,13 +285,21 @@ pub struct Block {
   pub encoding: BlockEncoding,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
+#[serde(tag = "type")]
 pub enum DecodeItem {
-  Literal(u8, DecodeData),
-  Match(u32, u32, DecodeData),
+  Literal {
+    value: u8,
+    data: DecodeData,
+  },
+  Match {
+    length: u32,
+    distance: u32,
+    data: DecodeData,
+  },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct DecodeData {
   pub bits: Vec<bool>,
   pub block_id: usize,
@@ -300,16 +309,18 @@ use std::fmt;
 impl fmt::Display for DecodeItem {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
-      DecodeItem::Literal(byte, data) => {
+      DecodeItem::Literal { value: byte, data } => {
         let string = match byte {
           0x20..=0x7e => (*byte as char).to_string(),
           _ => format!("<{}>", byte),
         };
         write!(f, "literal {}, {:?}", string, data)
       }
-      DecodeItem::Match(length, distance, data) => {
-        write!(f, "match {} {} {:?}", length, distance, data)
-      }
+      DecodeItem::Match {
+        length,
+        distance,
+        data,
+      } => write!(f, "match {} {} {:?}", length, distance, data),
     }
   }
 }

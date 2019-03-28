@@ -124,6 +124,7 @@ impl HuffmanNode {
   }
 }
 
+#[allow(dead_code)]
 pub fn fixed_byte_bit_lengths() -> Vec<u8> {
   let mut byte_bit_lengths = vec![8; 144];
   byte_bit_lengths.extend_from_slice(&[9; 112]);
